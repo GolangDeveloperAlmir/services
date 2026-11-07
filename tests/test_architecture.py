@@ -1,3 +1,5 @@
+"""Static tests for application import direction and declared layers."""
+
 import ast
 from pathlib import Path
 
@@ -14,12 +16,14 @@ LAYER_ORDER = {
 
 
 def _module_name(path: Path) -> str:
+    """Convert a repository Python path to its importable module name."""
     relative = path.relative_to(ROOT).with_suffix("")
     parts = relative.parts
     return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
 
 
 def _imported_module(node: ast.Import | ast.ImportFrom, module: str) -> list[str]:
+    """Resolve absolute and relative AST imports to module paths."""
     if isinstance(node, ast.Import):
         return [alias.name for alias in node.names]
 
@@ -33,6 +37,7 @@ def _imported_module(node: ast.Import | ast.ImportFrom, module: str) -> list[str
 
 
 def _layer_for(module: str) -> str | None:
+    """Return the configured architectural layer containing a module."""
     for layer in LAYER_ORDER:
         if module == layer or module.startswith(f"{layer}."):
             return layer
@@ -40,6 +45,7 @@ def _layer_for(module: str) -> str | None:
 
 
 def test_application_imports_follow_inward_layer_order() -> None:
+    """Reject app-layer imports that point outward to higher-level layers."""
     violations: list[str] = []
 
     for source_file in APP_ROOT.rglob("*.py"):
@@ -66,6 +72,7 @@ def test_application_imports_follow_inward_layer_order() -> None:
 
 
 def test_import_linter_configuration_declares_application_layers() -> None:
+    """Ensure Import Linter config names every layer used by the AST test."""
     config = (ROOT / ".importlinter").read_text(encoding="utf-8")
 
     assert "type = layers" in config

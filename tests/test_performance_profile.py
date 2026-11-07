@@ -1,3 +1,5 @@
+"""Tests for loopback-only Locust targets and bounded load profiles."""
+
 import pytest
 
 from tests.performance.safety import validate_load_profile
@@ -12,6 +14,7 @@ from tests.performance.safety import validate_load_profile
     ],
 )
 def test_load_profile_accepts_loopback_targets(host: str) -> None:
+    """Allow localhost and IPv4/IPv6 loopback endpoints."""
     validate_load_profile(host, users=10, duration="30s")
 
 
@@ -25,6 +28,7 @@ def test_load_profile_accepts_loopback_targets(host: str) -> None:
     ],
 )
 def test_load_profile_rejects_non_local_or_ambiguous_targets(host: str) -> None:
+    """Reject remote targets, paths, and user-info in load-test URLs."""
     with pytest.raises(ValueError):
         validate_load_profile(host, users=10, duration="30s")
 
@@ -39,5 +43,6 @@ def test_load_profile_rejects_non_local_or_ambiguous_targets(host: str) -> None:
     ],
 )
 def test_load_profile_enforces_user_and_duration_caps(users: int, duration: str) -> None:
+    """Enforce finite runs and the configured maximum virtual-user count."""
     with pytest.raises(ValueError):
         validate_load_profile("http://127.0.0.1:8000", users, duration)

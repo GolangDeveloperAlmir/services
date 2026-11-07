@@ -1,1 +1,1 @@
-"""Local-only performance and load-test scenarios."""
+"""Local-only performance workloads, safety checks, and report analysis."""

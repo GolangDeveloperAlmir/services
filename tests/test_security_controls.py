@@ -1,3 +1,5 @@
+"""Regression tests for authentication hardening and admin account invariants."""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -28,6 +30,7 @@ from app.users.router import router as users_router
 
 
 def test_local_auth_uses_argon2id_and_rejects_common_or_invalid_passwords() -> None:
+    """Verify Argon2id use and password length/common-password validation."""
     password = "river-cobalt-lantern-94!"
     password_hash = hash_password(password)
 
@@ -40,6 +43,7 @@ def test_local_auth_uses_argon2id_and_rejects_common_or_invalid_passwords() -> N
 
 
 def test_session_and_rate_limit_keys_do_not_contain_secrets_or_identity() -> None:
+    """Ensure Redis keys derive from inputs without disclosing raw values."""
     token = "opaque-session-token"
 
     assert token not in session_key(token)
@@ -48,6 +52,7 @@ def test_session_and_rate_limit_keys_do_not_contain_secrets_or_identity() -> Non
 
 
 def test_admin_policy_denies_missing_role_and_identity() -> None:
+    """Require both the admin scope and a persisted user identity."""
     policy = AdminOnlyPolicy()
 
     assert not policy.is_allowed(Principal("user", frozenset()), "users:admin")
@@ -62,12 +67,14 @@ def test_admin_policy_denies_missing_role_and_identity() -> None:
 
 
 def test_login_rate_limit_stops_before_database_authentication() -> None:
+    """Stop a rate-limited login before querying PostgreSQL."""
     redis = AsyncMock()
     redis.eval.return_value = [6, 1]
     session = AsyncMock()
     service = AuthService(session, redis)
 
     async def verify_limit() -> None:
+        """Assert the over-limit attempt raises before credential lookup."""
         with pytest.raises(LoginRateLimited):
             await service.login("admin@example.test", "some-password", "127.0.0.1")
 
@@ -76,6 +83,7 @@ def test_login_rate_limit_stops_before_database_authentication() -> None:
 
 
 def test_production_settings_require_tls_and_non_loopback_hosts() -> None:
+    """Reject production configurations without TLS or explicit remote hosts."""
     valid = {
         "database_url": "postgresql+asyncpg://user:pass@db.example.test/service?ssl=require",
         "redis_url": "rediss://:pass@cache.example.test:6379/0",
@@ -100,6 +108,7 @@ def test_production_settings_require_tls_and_non_loopback_hosts() -> None:
 
 
 def test_invalid_production_config_does_not_echo_secret_urls() -> None:
+    """Avoid disclosing database or Redis passwords in validation errors."""
     secret = "sensitive-password-marker"
     values = {
         "database_url": f"postgresql+asyncpg://user:{secret}@db.example.test/service",
@@ -115,6 +124,7 @@ def test_invalid_production_config_does_not_echo_secret_urls() -> None:
 
 
 def test_every_user_route_requires_an_admin() -> None:
+    """Ensure each profile API route has the shared admin dependency."""
     routes = [route for route in users_router.routes if isinstance(route, APIRoute)]
 
     assert routes
@@ -125,6 +135,7 @@ def test_every_user_route_requires_an_admin() -> None:
 
 
 def test_http_is_rejected_and_https_responses_include_security_headers() -> None:
+    """Require HTTPS and verify baseline transport security response headers."""
     http_client = TestClient(app)
     https_client = TestClient(app, base_url="https://localhost")
 
@@ -136,6 +147,7 @@ def test_http_is_rejected_and_https_responses_include_security_headers() -> None
 
 
 def test_validation_errors_never_reflect_supplied_passwords() -> None:
+    """Keep an invalid login password out of the 422 response body."""
     secret = "do-not-echo-" * 20
     app.state.redis = AsyncMock()
     client = TestClient(app, base_url="https://localhost")
@@ -150,6 +162,7 @@ def test_validation_errors_never_reflect_supplied_passwords() -> None:
 
 
 def test_last_admin_cannot_be_deactivated_or_deleted() -> None:
+    """Preserve the last active administrator when validating an account change."""
     target_id = uuid4()
     session = AsyncMock()
     session.get.return_value = SimpleNamespace(id=target_id, is_active=True)
@@ -157,6 +170,7 @@ def test_last_admin_cannot_be_deactivated_or_deleted() -> None:
     service = AuthService(session, AsyncMock())
 
     async def verify_invariant() -> None:
+        """Assert account mutation is rejected when it removes the final admin."""
         with pytest.raises(
             AdministratorInvariantError,
             match="last active administrator",
@@ -172,6 +186,7 @@ def test_last_admin_cannot_be_deactivated_or_deleted() -> None:
 
 
 def test_admin_deactivation_versions_credentials_and_records_source_ip() -> None:
+    """Version admin credentials and include source IP in the audit event."""
     target_id = uuid4()
     target = SimpleNamespace(id=target_id, is_active=True)
     credential = SimpleNamespace(session_version=3)
@@ -182,6 +197,7 @@ def test_admin_deactivation_versions_credentials_and_records_source_ip() -> None
     service = AuthService(session, AsyncMock())
 
     async def apply_change_guard() -> bool:
+        """Run the account-change guard with source address audit metadata."""
         return await service.ensure_admin_account_can_change(
             target_id,
             uuid4(),

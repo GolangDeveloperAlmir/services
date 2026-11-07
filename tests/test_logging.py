@@ -1,3 +1,5 @@
+"""Regression tests for structured application request logging."""
+
 import json
 import logging
 
@@ -5,6 +7,7 @@ from app.core.logging import JsonFormatter
 
 
 def test_json_formatter_includes_structured_request_fields() -> None:
+    """Keep approved request metadata in the JSON log representation."""
     record = logging.LogRecord(
         name="app.main",
         level=logging.INFO,

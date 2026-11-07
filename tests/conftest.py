@@ -1,3 +1,5 @@
+"""Shared pytest configuration for isolated service tests."""
+
 import os
 
 

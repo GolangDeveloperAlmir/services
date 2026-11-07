@@ -29,23 +29,29 @@ class MemoryUserRepository(UserRepository):
         session: AsyncSession,
         users: list[User] | None = None,
     ) -> None:
+        """Initialize the test repository with a session and optional rows."""
         super().__init__(session)
         self.users = users or []
         self.deleted: list[User] = []
 
     async def get_by_id(self, user_id: UUID) -> User | None:
+        """Find a profile by identifier in the in-memory collection."""
         return next((user for user in self.users if user.id == user_id), None)
 
     async def get_by_email(self, email: str) -> User | None:
+        """Find a profile by its normalized email address."""
         return next((user for user in self.users if user.email == email), None)
 
     async def get_all(self, offset: int, limit: int) -> list[User]:
+        """Return the requested slice of in-memory profiles."""
         return self.users[offset : offset + limit]
 
     def add(self, user: User) -> None:
+        """Add a profile to the in-memory collection."""
         self.users.append(user)
 
     async def delete(self, user: User) -> None:
+        """Remove and record a profile deleted by the service."""
         self.users.remove(user)
         self.deleted.append(user)
 
@@ -53,6 +59,7 @@ class MemoryUserRepository(UserRepository):
 def build_service(
     users: list[User] | None = None,
 ) -> tuple[UserService, AsyncMock, MemoryUserRepository]:
+    """Build a user service with a mocked session and in-memory repository."""
     session = AsyncMock()
     service = UserService(session)
     repository = MemoryUserRepository(session, users)
@@ -66,6 +73,7 @@ def make_user(
     email: str = "person@example.com",
     full_name: str = "Example Person",
 ) -> User:
+    """Construct a profile model with deterministic defaults for CRUD tests."""
     now = datetime.now(UTC)
     return User(
         id=user_id or uuid4(),
@@ -78,6 +86,7 @@ def make_user(
 
 
 def test_repository_lists_users_in_stable_newest_first_order() -> None:
+    """Ensure repository pagination uses stable newest-first SQL ordering."""
     users = [make_user()]
     session = AsyncMock()
     session.scalars.return_value = SimpleNamespace(all=Mock(return_value=users))
@@ -94,6 +103,7 @@ def test_repository_lists_users_in_stable_newest_first_order() -> None:
 
 
 def test_user_service_create_normalizes_email_and_commits() -> None:
+    """Create and commit a profile using trimmed fields and canonical email."""
     service, session, repository = build_service()
 
     created = asyncio.run(
@@ -108,6 +118,7 @@ def test_user_service_create_normalizes_email_and_commits() -> None:
 
 
 def test_user_service_reads_and_paginates() -> None:
+    """Read an existing profile and verify service pagination defaults."""
     first, second = make_user(), make_user()
     service, _, _ = build_service([first, second])
 
@@ -117,6 +128,7 @@ def test_user_service_reads_and_paginates() -> None:
 
 
 def test_user_service_missing_user_raises_domain_error() -> None:
+    """Raise the domain not-found error for a missing profile identifier."""
     service, _, _ = build_service()
 
     with pytest.raises(UserNotFoundError, match="User not found"):
@@ -124,6 +136,7 @@ def test_user_service_missing_user_raises_domain_error() -> None:
 
 
 def test_user_service_updates_profile_and_normalizes_email() -> None:
+    """Update profile fields and normalize the supplied email consistently."""
     user = make_user(email="person@example.com")
     service, session, _ = build_service([user])
 
@@ -143,6 +156,7 @@ def test_user_service_updates_profile_and_normalizes_email() -> None:
 
 
 def test_user_service_rejects_duplicate_email_on_create_and_update() -> None:
+    """Reject duplicate email addresses before either mutation is committed."""
     existing, target = make_user(), make_user(email="target@example.com")
     service, session, _ = build_service([existing, target])
 
@@ -160,6 +174,7 @@ def test_user_service_rejects_duplicate_email_on_create_and_update() -> None:
 
 
 def test_user_service_delete_removes_existing_user_and_commits() -> None:
+    """Delete an existing profile from the repository and commit once."""
     user = make_user()
     service, session, repository = build_service([user])
 
@@ -174,9 +189,11 @@ class MemoryCRUDService:
     """In-memory HTTP dependency that models user CRUD and email conflicts."""
 
     def __init__(self) -> None:
+        """Create an empty profile store for isolated HTTP route tests."""
         self.users: dict[UUID, User] = {}
 
     async def create(self, data: UserCreate) -> User:
+        """Create a profile and reject an email already in the test store."""
         email = str(data.email).casefold()
         if any(user.email.casefold() == email for user in self.users.values()):
             raise EmailAlreadyExistsError
@@ -185,17 +202,20 @@ class MemoryCRUDService:
         return user
 
     async def get_all(self, offset: int, limit: int) -> list[User]:
+        """Return a paginated, newest-first profile list."""
         users = sorted(self.users.values(), key=lambda user: user.id)
         users.sort(key=lambda user: user.created_at, reverse=True)
         return users[offset : offset + limit]
 
     async def get_by_id(self, user_id: UUID) -> User:
+        """Return a stored profile or raise the domain not-found error."""
         user = self.users.get(user_id)
         if user is None:
             raise UserNotFoundError
         return user
 
     async def update(self, user_id: UUID, data: UserUpdate) -> User:
+        """Apply validated fields and reject duplicate normalized email."""
         user = await self.get_by_id(user_id)
         changes = data.model_dump(exclude_unset=True)
         if "email" in changes:
@@ -211,12 +231,14 @@ class MemoryCRUDService:
         return user
 
     async def delete(self, user_id: UUID) -> None:
+        """Delete a stored profile after verifying that it exists."""
         await self.get_by_id(user_id)
         del self.users[user_id]
 
 
 @pytest.fixture
 def crud_client():
+    """Override auth and CRUD dependencies with isolated in-memory fakes."""
     service = MemoryCRUDService()
     auth_service = AsyncMock()
     auth_service.ensure_admin_account_can_change.return_value = False
@@ -238,6 +260,7 @@ def crud_client():
 
 
 def test_user_crud_http_endpoints(crud_client) -> None:
+    """Exercise create, list, detail, update, and delete over HTTPS routes."""
     client, service, auth_service = crud_client
     created = client.post(
         "/users",
@@ -268,6 +291,7 @@ def test_user_crud_http_endpoints(crud_client) -> None:
 
 
 def test_user_crud_http_errors_and_validation(crud_client) -> None:
+    """Check not-found responses and invalid CRUD payload and query handling."""
     client, _, _ = crud_client
 
     missing = client.get(f"/users/{uuid4()}")
@@ -288,6 +312,7 @@ def test_user_crud_http_errors_and_validation(crud_client) -> None:
 
 
 def test_user_crud_http_rejects_duplicate_emails(crud_client) -> None:
+    """Return conflicts for duplicate emails on create and update requests."""
     client, _, _ = crud_client
     first = client.post(
         "/users",
