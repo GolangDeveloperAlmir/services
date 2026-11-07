@@ -87,6 +87,7 @@ make architecture
 [модель данных и ER-диаграммы](docs/data-model.md), [HTTP API](docs/api.md),
 [безопасность](docs/security.md), [наблюдаемость](docs/observability.md),
 [нагрузочные проверки](docs/performance.md), [обзор продукта](docs/product-overview.md),
+[план развития и будущие ТЗ](docs/roadmap.md),
 [участие в разработке](CONTRIBUTING.md) и [политика раскрытия](SECURITY.md).
 
 ## English
@@ -175,4 +176,8 @@ Start at the [documentation index](docs/index.md): [architecture](docs/architect
 [data model and ER diagrams](docs/data-model.md), [HTTP API](docs/api.md),
 [security](docs/security.md), [observability](docs/observability.md),
 [load testing](docs/performance.md), [product overview](docs/product-overview.md),
+[proposed roadmap and future specifications](docs/roadmap.md),
 [contributing](CONTRIBUTING.md), and [responsible disclosure](SECURITY.md).
+
+The roadmap is a planning document, not a feature or delivery commitment.
+Its detailed technical specifications are currently maintained in Russian.

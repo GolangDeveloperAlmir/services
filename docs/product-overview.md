@@ -60,11 +60,18 @@ TLS-enabled БД/кэша, managed secrets, резервных копий, reten
 
 ### Возможное направление развития / Potential roadmap
 
+Подробные условные этапы, зависимости, решения до реализации и критерии
+приёмки описаны в [плане развития и будущих ТЗ](roadmap.md). В частности,
+организации, tenant isolation, MFA, SSO/OIDC, recovery и production SLO не
+являются возможностями текущей версии; каждое направление требует
+подтверждения продуктовой потребности и security review.
+
 Subject to customer requirements and security review, the service could evolve
 toward organization-scoped accounts, external identity-provider references,
 MFA, granular roles, tenant-aware authorization, and managed account recovery.
-These are roadmap ideas, not current product capabilities or delivery
-commitments.
+See the [roadmap and future specifications](roadmap.md) for conditional phases,
+dependencies, decisions required before implementation, and acceptance
+criteria. These are not current capabilities or delivery commitments.
 
 С учётом требований клиентов и security review продукт можно развивать в
 сторону организаций, внешних identity-provider, ролей и разрешений,
