@@ -1,10 +1,15 @@
 """Environment-backed settings with startup validation for production security."""
 
+from ipaddress import ip_address
+from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+DEFAULT_MEDIA_ROOT = Path(__file__).resolve().parents[2] / "media"
 
 
 class Settings(BaseSettings):
@@ -21,7 +26,18 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     database_url: str
     redis_url: str
-    allowed_hosts: list[str] = ["localhost", "127.0.0.1", "::1"]
+    allowed_hosts: list[str] = Field(
+        default=["localhost", "127.0.0.1", "::1"],
+        validation_alias=AliasChoices("APP_ALLOWED_HOSTS", "allowed_hosts"),
+    )
+    trusted_proxy_ips: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("APP_TRUSTED_PROXY_IPS", "trusted_proxy_ips"),
+    )
+    media_root: Path = Field(
+        default=DEFAULT_MEDIA_ROOT,
+        validation_alias=AliasChoices("APP_MEDIA_ROOT", "media_root"),
+    )
     auth_session_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     auth_rate_limit_attempts: int = Field(default=5, ge=1, le=20)
     auth_rate_limit_window_seconds: int = Field(default=900, ge=60, le=3600)
@@ -38,6 +54,15 @@ class Settings(BaseSettings):
         if not normalized or any(not host or "*" in host for host in normalized):
             raise ValueError("APP_ALLOWED_HOSTS must contain explicit, non-empty hostnames.")
         return normalized
+
+    @field_validator("trusted_proxy_ips")
+    @classmethod
+    def normalize_trusted_proxy_ips(cls, addresses: list[str]) -> list[str]:
+        """Accept only explicit IP addresses as trusted reverse proxies."""
+        try:
+            return [str(ip_address(address.strip())) for address in addresses]
+        except ValueError as error:
+            raise ValueError("APP_TRUSTED_PROXY_IPS must contain only IP addresses.") from error
 
     @field_validator("database_url")
     @classmethod
@@ -73,6 +98,8 @@ class Settings(BaseSettings):
             raise ValueError("Production DATABASE_URL must require TLS.")
         if any(host in {"localhost", "127.0.0.1", "::1"} for host in self.allowed_hosts):
             raise ValueError("Production APP_ALLOWED_HOSTS must not contain loopback hosts.")
+        if not self.trusted_proxy_ips:
+            raise ValueError("Production APP_TRUSTED_PROXY_IPS must not be empty.")
         if self.otel_exporter_otlp_endpoint and not self.otel_exporter_otlp_endpoint.startswith(
             "https://"
         ):

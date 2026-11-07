@@ -89,6 +89,7 @@ def test_production_settings_require_tls_and_non_loopback_hosts() -> None:
         "redis_url": "rediss://:pass@cache.example.test:6379/0",
         "app_env": "production",
         "allowed_hosts": ["api.example.test"],
+        "trusted_proxy_ips": ["192.0.2.10"],
     }
     Settings(**valid)
 
@@ -105,6 +106,25 @@ def test_production_settings_require_tls_and_non_loopback_hosts() -> None:
         )
     with pytest.raises(ValueError, match="explicit"):
         Settings(**{**valid, "allowed_hosts": [" *.example.test"]})
+    with pytest.raises(ValueError, match="IP addresses"):
+        Settings(**{**valid, "trusted_proxy_ips": ["proxy.internal"]})
+
+
+def test_app_prefixed_environment_settings_are_loaded(monkeypatch, tmp_path) -> None:
+    """Load documented host, proxy, and media variables from the environment."""
+    monkeypatch.setenv("APP_ALLOWED_HOSTS", '["console.example.test"]')
+    monkeypatch.setenv("APP_TRUSTED_PROXY_IPS", '["192.0.2.10"]')
+    monkeypatch.setenv("APP_MEDIA_ROOT", str(tmp_path))
+
+    configured = Settings(
+        _env_file=None,
+        database_url="postgresql+asyncpg://user:pass@db.example.test/service",
+        redis_url="redis://:pass@cache.example.test:6379/0",
+    )
+
+    assert configured.allowed_hosts == ["console.example.test"]
+    assert configured.trusted_proxy_ips == ["192.0.2.10"]
+    assert configured.media_root == tmp_path
 
 
 def test_invalid_production_config_does_not_echo_secret_urls() -> None:

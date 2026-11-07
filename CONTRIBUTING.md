@@ -6,6 +6,8 @@
 
 ```sh
 uv sync --locked --all-groups
+make frontend-install
+make frontend-build
 uv run pre-commit install -c .pre-commit-config.yaml
 ```
 
@@ -13,6 +15,8 @@ uv run pre-commit install -c .pre-commit-config.yaml
 development TLS certificate командой `make dev-certs`, затем запустите
 PostgreSQL, Redis и API командой `make up`.
 Перед PR выполните `make check`, `make validate-specs` и `make architecture`.
+Frontend-проверки требуют `make frontend-install`; для локальной раздачи
+интерфейса также выполните `make frontend-build`.
 После изменения роутов/схем сгенерируйте OpenAPI командой `make openapi`.
 
 Добавляйте тесты и обновляйте документацию вместе с поведением. Не добавляйте
@@ -42,10 +46,17 @@ The development override exposes PostgreSQL only on `127.0.0.1:5433`.
 
 ```sh
 make check
+make frontend-check
+make nginx-check
 make validate-specs
 make architecture
 make security
 ```
+
+For frontend changes, run `make frontend-check` and `make frontend-build`.
+Commit the regenerated `frontend/public/assets/app.js` together with its
+TypeScript source. CI installs the locked npm dependencies before running
+`make check`; `make security` also audits the frontend lockfile.
 
 Run `make openapi` after changing routes or schemas, and commit the regenerated
 `openapi.yaml`. `asyncapi.yaml` documents the current absence of messaging

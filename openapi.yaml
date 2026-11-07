@@ -348,6 +348,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /media/catalog:
+    get:
+      tags:
+      - media
+      summary: Media Catalog
+      description: List only supported, regular files from the read-only media directory.
+      operationId: media_catalog_media_catalog_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/MediaItem'
+                type: array
+                title: Response Media Catalog Media Catalog Get
+      security:
+      - HTTPBearer: []
+  /media/{media_id}:
+    get:
+      tags:
+      - media
+      summary: Read Media
+      description: Stream a catalog item by opaque ID without accepting filesystem
+        paths.
+      operationId: read_media_media__media_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: media_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Media Id
+      responses:
+        '200':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AdminGrantRequest:
@@ -439,6 +484,39 @@ components:
       - password
       title: LoginRequest
       description: Credentials submitted to the local administrator login endpoint.
+    MediaItem:
+      properties:
+        id:
+          type: string
+          title: Id
+        category:
+          type: string
+          title: Category
+        kind:
+          type: string
+          enum:
+          - background
+          - music
+          title: Kind
+        title:
+          type: string
+          title: Title
+        content_type:
+          type: string
+          title: Content Type
+        url:
+          type: string
+          title: Url
+      type: object
+      required:
+      - id
+      - category
+      - kind
+      - title
+      - content_type
+      - url
+      title: MediaItem
+      description: Public metadata for one operator-curated, size-bounded media file.
     PasswordChangeRequest:
       properties:
         current_password:

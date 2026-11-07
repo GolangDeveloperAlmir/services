@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7fb">
+    <meta name="description" content="Административная панель User Service">
+    <title>User Service — профили</title>
+    <link rel="stylesheet" href="assets/styles.css">
+    <script src="assets/app.js" defer></script>
+  </head>
+  <body>
+    <div id="ambient-scene" class="ambient-scene" data-scene="city" aria-hidden="true">
+      <img id="scene-image" class="scene-image" alt="" hidden>
+      <span class="scene-orb scene-orb-one"></span>
+      <span class="scene-orb scene-orb-two"></span>
+      <span class="scene-horizon"></span>
+    </div>
+    <main class="app-shell">
+      <section id="login-view" class="login-layout" aria-labelledby="login-title">
+        <div class="login-aside">
+          <a class="brand brand-light" href="/" aria-label="User Service">
+            <span class="brand-mark" aria-hidden="true">U</span>
+            <span>User Service</span>
+          </a>
+          <div class="login-aside-copy">
+            <span class="eyebrow eyebrow-light" data-i18n="adminConsole">ADMIN CONSOLE</span>
+            <h1 data-i18n="loginHero">Профили —<br>под контролем.</h1>
+            <p data-i18n="loginHeroDescription">Безопасное управление профилями пользователей в одном месте.</p>
+          </div>
+          <span class="aside-footnote" data-i18n="adminOnly">Доступ только для администраторов</span>
+        </div>
+
+        <div class="login-main">
+          <form id="login-form" class="login-card">
+            <label class="login-language">
+              <span class="sr-only" data-i18n="language">Language</span>
+              <select id="login-language-select">
+                <option value="ru">RU</option>
+                <option value="en">EN</option>
+              </select>
+            </label>
+            <div class="brand brand-dark">
+              <span class="brand-mark" aria-hidden="true">U</span>
+              <span>User Service</span>
+            </div>
+            <span class="eyebrow" data-i18n="adminConsoleRu">АДМИНИСТРАТИВНАЯ ПАНЕЛЬ</span>
+            <h2 id="login-title" data-i18n="welcomeBack">С возвращением</h2>
+            <p class="muted" data-i18n="loginPrompt">Войдите с учётной записью администратора.</p>
+
+            <label class="field">
+              <span data-i18n="email">Email</span>
+              <input id="login-email" name="email" type="email" autocomplete="username"
+                     placeholder="admin@example.com" data-i18n-placeholder="adminEmailPlaceholder"
+                     required maxlength="320">
+            </label>
+            <label class="field">
+              <span data-i18n="password">Пароль</span>
+              <input id="login-password" name="password" type="password"
+                     autocomplete="current-password" placeholder="Введите пароль"
+                     data-i18n-placeholder="passwordPlaceholder"
+                     required maxlength="128">
+            </label>
+
+            <p id="login-error" class="message message-error" role="alert" hidden></p>
+            <button id="login-submit" class="button button-primary button-wide" type="submit">
+              <span data-i18n="signIn">Войти в систему</span><span aria-hidden="true">→</span>
+            </button>
+            <p class="login-note" data-i18n="secureConnection">Соединение защищено. Не передавайте свои данные другим лицам.</p>
+          </form>
+        </div>
+      </section>
+
+      <section id="dashboard-view" class="dashboard" hidden>
+        <header class="topbar">
+          <a class="brand brand-dark" href="/" aria-label="User Service">
+            <span class="brand-mark" aria-hidden="true">U</span>
+            <span>User Service</span>
+          </a>
+          <div class="topbar-actions">
+            <span class="admin-label"><span class="online-dot"></span><span data-i18n="administrator">Администратор</span></span>
+            <span id="admin-email" class="admin-email"></span>
+            <label class="language-switch">
+              <span class="sr-only" data-i18n="language">Язык</span>
+              <select id="language-select">
+                <option value="ru">RU</option>
+                <option value="en">EN</option>
+              </select>
+            </label>
+            <button id="logout-button" class="button button-quiet" type="button" data-i18n="signOut">Выйти</button>
+          </div>
+        </header>
+
+        <div class="content">
+          <div class="page-heading">
+            <div>
+              <span class="eyebrow" data-i18n="management">УПРАВЛЕНИЕ</span>
+              <h1 data-i18n="profilesTitle">Профили пользователей</h1>
+              <p class="muted" data-i18n="profilesDescription">Создавайте и обновляйте профили в рамках ваших полномочий.</p>
+            </div>
+            <button id="create-button" class="button button-primary" type="button">
+              <span aria-hidden="true">＋</span><span data-i18n="newProfile">Новый профиль</span>
+            </button>
+          </div>
+
+          <section class="scene-controls panel" aria-labelledby="scene-title">
+            <div class="scene-controls-heading">
+              <div>
+                <span class="eyebrow" data-i18n="personalization">PERSONALIZATION</span>
+                <h2 id="scene-title" data-i18n="sceneTitle">Живой фон и музыка</h2>
+              </div>
+              <label class="motion-control">
+                <input id="motion-toggle" type="checkbox" checked>
+                <span data-i18n="motion">Анимация</span>
+              </label>
+            </div>
+            <div class="media-controls">
+              <label class="control-field">
+                <span data-i18n="background">Фон</span>
+                <select id="background-category">
+                  <option value="city" data-i18n="city">Мегаполис</option>
+                  <option value="nature" data-i18n="nature">Природа</option>
+                  <option value="ocean" data-i18n="ocean">Океан</option>
+                  <option value="beach" data-i18n="beach">Пляж</option>
+                  <option value="anime" data-i18n="anime">Аниме-вдохновение</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span data-i18n="mediaSource">Источник медиа</span>
+                <select id="media-source">
+                  <option value="api" data-i18n="apiSource">Защищённый API</option>
+                  <option value="local" data-i18n="localSource">Локальный файл</option>
+                </select>
+              </label>
+              <label id="background-file-control" class="control-field">
+                <span data-i18n="backgroundFile">Своя картинка</span>
+                <input id="background-file" type="file" accept="image/jpeg,image/png,image/webp">
+              </label>
+              <label id="music-file-control" class="control-field">
+                <span data-i18n="musicFile">Фоновая музыка</span>
+                <input id="music-file" type="file" accept="audio/mpeg,audio/ogg,audio/wav">
+              </label>
+            </div>
+            <div class="audio-controls">
+              <span id="audio-control-label" class="sr-only" data-i18n="musicFile">Фоновая музыка</span>
+              <audio id="background-audio" aria-labelledby="audio-control-label" controls preload="none"></audio>
+              <span id="media-status" class="muted" role="status" aria-live="polite"></span>
+            </div>
+            <p class="media-note" data-i18n="mediaPrivacy">
+              Локальные файлы остаются в браузере и не загружаются на сервер. API-каталог доступен только после входа.
+            </p>
+          </section>
+
+          <section class="panel" aria-labelledby="profiles-title">
+            <div class="panel-heading">
+              <div>
+                <h2 id="profiles-title" data-i18n="allProfiles">Все профили</h2>
+                <p id="result-count" class="muted">Загрузка списка…</p>
+              </div>
+              <label class="search-field">
+                <span class="sr-only" data-i18n="searchProfiles">Поиск по профилям на текущей странице</span>
+                <span class="search-icon" aria-hidden="true">⌕</span>
+                <input id="search-input" type="search" placeholder="Поиск на странице"
+                       data-i18n-placeholder="searchPlaceholder"
+                       autocomplete="off">
+              </label>
+            </div>
+
+            <p id="page-error" class="message message-error page-message" role="alert" hidden></p>
+            <div id="empty-state" class="empty-state" hidden>
+              <span class="empty-icon" aria-hidden="true">◎</span>
+              <h3 id="empty-state-title" data-i18n="emptyProfiles">Профилей пока нет</h3>
+              <p id="empty-state-text" class="muted" data-i18n="emptyProfilesDescription">Создайте первый профиль, чтобы он появился в списке.</p>
+              <button id="empty-create-button" class="button button-secondary" type="button">
+                <span data-i18n="createProfile">Создать профиль</span>
+              </button>
+            </div>
+
+            <div id="table-wrap" class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="userColumn">ПОЛЬЗОВАТЕЛЬ</th>
+                    <th scope="col" data-i18n="statusColumn">СТАТУС</th>
+                    <th scope="col" data-i18n="createdColumn">СОЗДАН</th>
+                    <th scope="col"><span class="sr-only">Действия</span></th>
+                  </tr>
+                </thead>
+                <tbody id="user-rows"></tbody>
+              </table>
+            </div>
+
+            <div class="pagination">
+              <span id="page-label" class="muted">Страница 1</span>
+              <div class="pagination-actions">
+                <button id="previous-page" class="button button-secondary button-small"
+                        type="button" disabled>← Назад</button>
+                <button id="next-page" class="button button-secondary button-small"
+                        type="button">Далее →</button>
+              </div>
+            </div>
+          </section>
+          <p class="privacy-note" data-i18n="profilePrivacy">Создание профиля не создаёт учётные данные или права входа.</p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="profile-dialog" class="dialog">
+      <form id="profile-form" class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <span class="eyebrow" data-i18n="profile">ПРОФИЛЬ</span>
+            <h2 id="dialog-title" data-i18n="newProfile">Новый профиль</h2>
+          </div>
+          <button id="dialog-close" class="icon-button" type="button" aria-label="Закрыть"
+                  data-i18n-aria-label="close">×</button>
+        </div>
+        <label class="field">
+          <span data-i18n="fullName">Полное имя</span>
+          <input id="profile-name" name="full_name" type="text" autocomplete="name"
+                 minlength="1" maxlength="120" required>
+        </label>
+        <label class="field">
+          <span data-i18n="email">Email</span>
+          <input id="profile-email" name="email" type="email" autocomplete="email"
+                 maxlength="320" required>
+        </label>
+        <p id="dialog-error" class="message message-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="dialog-cancel" class="button button-secondary" type="button" data-i18n="cancel">Отмена</button>
+          <button id="profile-submit" class="button button-primary" type="submit">
+            <span data-i18n="saveProfile">Сохранить профиль</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

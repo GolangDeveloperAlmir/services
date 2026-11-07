@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "none",
+    "lib": ["DOM", "ES2022"],
+    "strict": true,
+    "noEmitOnError": true,
+    "outFile": "public/assets/app.js",
+    "skipLibCheck": true
+  },
+  "files": ["src/app.ts"]
+}

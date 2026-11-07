@@ -1,12 +1,19 @@
 # HTTP API / HTTP API
 
-The API is served over HTTPS at `https://localhost:8000` in the local Compose
-environment. OpenAPI JSON is `/openapi.json`, Swagger UI is `/docs`, and ReDoc
-is `/redoc`; none is served over cleartext HTTP.
+The API is served over HTTPS at `https://127.0.0.1:8000` in the local Compose
+environment. Nginx terminates TLS and forwards to the private application
+network; the API container has no published host port. OpenAPI JSON is
+`/openapi.json`, Swagger UI is `/docs`, and ReDoc is `/redoc`; none is served
+over cleartext HTTP.
 
-Локальный Compose публикует API по `https://localhost:8000`. OpenAPI JSON
-доступен по `/openapi.json`, Swagger UI — `/docs`, ReDoc — `/redoc`; обычный
-HTTP не обслуживается.
+Локальный Compose публикует API по `https://127.0.0.1:8000`: TLS завершает
+Nginx и передаёт запросы во внутреннюю сеть приложения; host-порт API не
+публикуется. OpenAPI JSON доступен по `/openapi.json`, Swagger UI — `/docs`,
+ReDoc — `/redoc`; обычный HTTP не обслуживается.
+
+Административная веб-панель доступна по `https://127.0.0.1:8000/`. Она
+использует перечисленные ниже API endpoints и хранит bearer-токен только в
+памяти вкладки; после перезагрузки требуется повторный вход.
 
 ## Authentication / Аутентификация
 
@@ -114,6 +121,60 @@ Email нормализуется одинаково при создании, о�
 возвращает пустой ответ `204`. Деактивация или удаление администратора
 инвалидирует его сессии; self-deactivation, self-delete и потеря последнего
 активного администратора отклоняются с `409`.
+
+## Curated media / Каталог медиа
+
+The read-only media catalog requires the same active administrator bearer
+session as profile management. Media is delivered from the same HTTPS origin:
+
+| Method | Path | Purpose | Success |
+| --- | --- | --- | --- |
+| `GET` | `/media/catalog` | List curated background and music metadata | `200` |
+| `GET` | `/media/{media_id}` | Stream one catalog item by opaque ID | `200` |
+
+The catalog contains only operator-managed regular files under
+`media/backgrounds/{city,nature,ocean,beach,anime}` and `media/music/ambient`.
+Supported extensions are JPG/JPEG, PNG, WebP, MP3, OGG, and WAV. Each file is
+limited to 15 MiB and the catalog to 500 eligible files. Unsupported files,
+symlinks, and entries outside those fixed directories are not served. The
+opaque ID does not accept a filesystem path. The current implementation
+chooses the response MIME type from the extension; it does not scan or
+transcode operator-provided files.
+
+There is no upload API. Choosing a local file in the browser does not send it
+to the backend. See [media documentation](media.md) for directory setup and
+the future isolated processing specification.
+
+`/media/catalog` returns `503` if the configured catalog root is unavailable
+or exceeds its file-count limit. Unknown or invalid media IDs return `404`;
+all media routes also require HTTPS and administrator authorization.
+
+## Каталог медиа
+
+Доступ к read-only каталогу требует такую же активную bearer-сессию
+администратора, как управление профилями. Медиа передаются с того же HTTPS
+origin:
+
+| Метод | Путь | Назначение | Успех |
+| --- | --- | --- | --- |
+| `GET` | `/media/catalog` | Метаданные доступных фонов и музыки | `200` |
+| `GET` | `/media/{media_id}` | Потоковая выдача по непрозрачному ID | `200` |
+
+Каталог содержит только обычные файлы оператора в
+`media/backgrounds/{city,nature,ocean,beach,anime}` и `media/music/ambient`.
+Разрешены JPG/JPEG, PNG, WebP, MP3, OGG и WAV; размер файла не больше 15 MiB,
+каталог ограничен 500 подходящими файлами. Неподдерживаемые файлы,
+символические ссылки и записи вне указанных директорий не выдаются.
+Непрозрачный ID не принимает путь к файловой системе. MIME выбирается по
+расширению; текущая реализация не сканирует и не перекодирует файлы оператора.
+
+API загрузки отсутствует. Выбор локального файла в браузере не отправляет
+его на backend. Структура каталогов и будущая изолированная обработка описаны
+в [документации медиа](media.md).
+
+Если корень каталога недоступен или превышен лимит файлов, `/media/catalog`
+возвращает `503`. Неизвестный или неверный ID возвращает `404`; для всех
+маршрутов медиа также обязательны HTTPS и права администратора.
 
 ## Errors / Ошибки
 

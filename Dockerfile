@@ -1,3 +1,15 @@
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/public ./public
+COPY frontend/src ./src
+COPY frontend/tsconfig.json ./
+RUN npm run build
+
 FROM python:3.14-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -21,7 +33,8 @@ FROM python:3.14-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    APP_MEDIA_ROOT=/media
 
 WORKDIR /app
 
@@ -30,8 +43,10 @@ COPY --from=builder /app/app ./app
 COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/alembic.ini ./
+COPY --from=frontend-builder /frontend/public ./frontend/public
 
-RUN useradd --create-home --uid 10001 app \
+RUN mkdir -p /media \
+    && useradd --create-home --uid 10001 app \
     && chown -R app:app /app
 USER 10001:10001
 

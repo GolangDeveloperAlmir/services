@@ -24,19 +24,27 @@ access, backups, and monitored security alerts.
 | Session state | Redis | SHA-256 token-derived key, user ID and credential version; TTL |
 | Profiles and role assignments | PostgreSQL | All profile endpoints require an active local admin |
 | Security audit events | PostgreSQL | Append-only by application convention; operator-managed retention |
+| Curated media | Read-only operator-managed directory | Admin-only catalog, fixed paths/types, 15 MiB per file |
 | Runtime credentials | Deployment environment/secret manager | Excluded from Git and Docker build context |
 
-Clients connect to Hypercorn over TLS with HTTP/2 negotiated by ALPN. The API
-connects to PostgreSQL and Redis over the private deployment network. Neither
-database is an identity provider: PostgreSQL is authoritative for account and
-role state, while Redis stores short-lived sessions and login rate counters.
-Redis unavailability prevents authentication rather than bypassing it.
+In Compose, clients connect to Nginx over TLS 1.2/1.3; Nginx forwards HTTP to
+Hypercorn only over an isolated internal Docker network. Nginx alone joins
+that proxy network and a separate ingress bridge bound to host loopback. This
+protects the client connection, not traffic on a compromised host or an
+untrusted overlay network. Production must encrypt the internal hop if its
+network is not trusted and control Nginx egress at the host/network layer.
+PostgreSQL and Redis use a separate internal network and are not published to
+the host. PostgreSQL is authoritative for account and role state, while Redis
+stores short-lived sessions and login rate counters. Redis unavailability
+prevents authentication rather than bypassing it.
 
 ```mermaid
 flowchart LR
-    Browser["Admin client"] -->|"TLS 1.2+ / HTTP2"| Hypercorn["Hypercorn + FastAPI"]
+    Browser["Admin client"] -->|"TLS 1.2+"| Nginx["Nginx ingress"]
+    Nginx -->|"HTTP / isolated proxy network"| Hypercorn["Hypercorn + FastAPI"]
     Hypercorn -->|"TLS required in production"| PostgreSQL
     Hypercorn -->|"TLS + password required in production"| Redis
+    Hypercorn -->|"read-only / admin-only"| Media["Curated media catalog"]
     PostgreSQL --> Credentials["Argon2id credentials / RBAC / audit"]
     Redis --> Sessions["Opaque-session state / rate limits"]
 ```
@@ -69,6 +77,8 @@ flowchart LR
   cleanup fails.
 - A bearer token is sent in the `Authorization` header. The API does not use
   ambient browser cookies, so cookie-based CSRF defenses are not applicable.
+- The bundled web console keeps the bearer token in tab memory only; it is not
+  written to browser storage, and a page reload requires a new login.
 - Redis and PostgreSQL are required at startup; authentication never falls
   back to in-memory state or an unauthenticated mode.
 
@@ -112,16 +122,27 @@ docker compose exec app python -m app.auth.cli rotate-password
   email/IP-derived key and by IP. Defaults are 5 attempts per email/IP pair
   and 30 attempts per IP per 15 minutes. Limits are configurable and bounded.
 - The client address is taken from the ASGI connection, not an arbitrary
-  `X-Forwarded-For` header. Deployments behind a proxy must explicitly configure
-  and validate proxy trust before changing this behavior.
+  `X-Forwarded-For` header. Compose configures one fixed trusted Nginx IP;
+  Nginx overwrites `X-Forwarded-For` with the connected peer, sets
+  `X-Forwarded-Proto: https`, and the application rejects malformed proxy
+  headers. Never add a proxy address to `APP_TRUSTED_PROXY_IPS` unless that
+  address is dedicated to a controlled proxy.
 - `APP_ALLOWED_HOSTS` rejects empty values and wildcard hosts. The production
   validator also rejects loopback hosts.
-- Plain HTTP receives `426 Upgrade Required`; application routes are not
-  served over cleartext HTTP. Hypercorn is started with certificate/key files
-  and HTTP/2 ALPN. Local self-signed certificates are for development only.
+- Compose publishes only Nginx at `127.0.0.1:8000`; the application has no
+  host-published port. Nginx accepts TLS 1.2/1.3, limits request bodies to
+  64 KiB, connections, and login rate, and does not include query strings in
+  its access log. Response bodies are not buffered to temporary disk files.
+  The local Compose stack uses a self-signed certificate and
+  plaintext HTTP only between containers on an internal network; it is not a
+  production deployment.
+- `make run` is the separate direct-development mode: Hypercorn is started
+  with certificate/key files and HTTP/2 ALPN. Production requires a valid
+  certificate, reviewed allowed hosts, TLS-enabled database connections, and
+  an explicitly trusted proxy design if one is used.
 - Responses set HSTS, `X-Content-Type-Options`, `X-Frame-Options`,
-  `Referrer-Policy`, and a restrictive `Permissions-Policy`. Authentication
-  responses use `Cache-Control: no-store`.
+  `Referrer-Policy`, `Permissions-Policy`, and a restrictive CSP.
+  Authentication and media responses use `Cache-Control: private, no-store`.
 - Production settings require `APP_ENV=production`, `rediss://` for Redis,
   TLS parameters in `DATABASE_URL`, and non-loopback allowed hosts.
 
@@ -134,13 +155,25 @@ docker compose exec app python -m app.auth.cli rotate-password
   changes must be reviewed; do not allowlist real credentials.
 - Runtime and development dependencies are pinned in `uv.lock`; CI runs
   `pip-audit` against OSV and fails on known vulnerabilities or audit errors.
+- Frontend build dependencies are pinned in `frontend/package-lock.json`;
+  `npm audit --prefix frontend` checks that lockfile.
 - Bandit and Semgrep run over application code; actionlint and zizmor check
   workflows. GitHub Actions are pinned to full commit SHAs.
 - CodeQL performs Python code scanning. Trivy blocks container images with
   fixable HIGH or CRITICAL vulnerabilities.
 - The image is multi-stage and runs as an unprivileged UID. Only runtime
-  dependencies and application/migration sources are copied to the final
-  image. Docker build context excludes local secrets and test/report files.
+  dependencies, application/migration sources, and compiled frontend assets
+  are copied to the final image. Operator media is mounted read-only at
+  runtime and excluded from the Docker build context.
+- The API container runs read-only with a temporary filesystem for `/tmp`,
+  dropped Linux capabilities, and `no-new-privileges`. Redis is also
+  read-only with a bounded `/tmp`; Nginx has a read-only root and only the
+  `CHOWN`, `SETUID`, and `SETGID` capabilities required for temporary paths
+  and unprivileged workers.
+- Media serving is read-only and restricted to authenticated administrators.
+  Browser-local files are never uploaded. There is no upload endpoint or
+  isolated processing worker; see [media.md](media.md) for implemented scope
+  and [the future specification](roadmap/05-media-pipeline.md).
 
 ## Audit, privacy, and recovery
 
@@ -175,6 +208,8 @@ recovery procedure; bootstrap is deliberately not a password-reset bypass.
 
 ```sh
 uv sync --locked --all-groups
+make frontend-install
+make nginx-check
 make security
 make test
 make architecture
@@ -213,12 +248,19 @@ Production требует отдельного управляемого разв
 | Состояние сессий | Redis | Ключ из SHA-256 токена, ID пользователя и версия credentials; TTL |
 | Профили и роли | PostgreSQL | Все profile endpoints требуют локального активного админа |
 | Security audit | PostgreSQL | Запись приложением; retention задаётся оператором |
+| Каталог медиа | Каталог оператора только для чтения | Только admin, фиксированные пути/форматы, 15 MiB на файл |
 | Секреты runtime | Secret manager/окружение deployment | Исключены из Git и Docker build context |
 
-Клиент подключается к Hypercorn по TLS; HTTP/2 согласуется через ALPN.
-Production-соединения API с PostgreSQL и Redis также должны быть защищены.
-PostgreSQL является источником account/role state, Redis хранит короткоживущие
-сессии и счётчики входа. Недоступность Redis не приводит к обходу авторизации.
+В Compose клиент подключается к Nginx по TLS 1.2/1.3; Nginx передаёт HTTP
+Hypercorn только во внутренней Docker-сети. Только Nginx подключён одновременно
+к proxy-сети и отдельной ingress bridge, опубликованной на loopback. Это
+защищает соединение с клиентом, но не трафик на скомпрометированном хосте или
+недоверенной overlay-сети. Если внутренняя сеть production не является
+доверенной, этот участок также нужно шифровать; исходящий трафик Nginx следует
+ограничивать на уровне host/network. PostgreSQL и Redis находятся в отдельной
+внутренней сети и не публикуются на host. PostgreSQL является источником
+account/role state, Redis хранит короткоживущие сессии и счётчики входа.
+Недоступность Redis не приводит к обходу авторизации.
 
 ## Аутентификация и авторизация
 
@@ -245,6 +287,8 @@ PostgreSQL является источником account/role state, Redis хр�
   сессии. Версия credentials остаётся авторитетной даже при ошибке очистки
   Redis.
 - Токен передаётся в `Authorization`; cookies не применяются.
+- Встроенная веб-панель хранит bearer-токен только в памяти вкладки и не
+  сохраняет его в browser storage; после перезагрузки требуется новый вход.
 - На старте обязательны PostgreSQL и Redis; нет fallback на память или
   неаутентифицированный режим.
 - Единственная встроенная роль — `admin`; все `/users` маршруты закрыты
@@ -277,16 +321,26 @@ docker compose exec app python -m app.auth.cli rotate-password
   по IP. По умолчанию разрешены 5 попыток на email/IP и 30 попыток на IP за
   15 минут; диапазоны настроек ограничены.
 - IP берётся из ASGI connection, произвольный `X-Forwarded-For` не доверяется.
-  Перед использованием прокси необходимо отдельно настроить и проверить
-  доверенную границу.
+  Compose задаёт один фиксированный IP доверенного Nginx; Nginx перезаписывает
+  `X-Forwarded-For` адресом подключённого клиента, устанавливает
+  `X-Forwarded-Proto: https`, а приложение отклоняет некорректные proxy
+  headers. Добавляйте адрес в `APP_TRUSTED_PROXY_IPS` только если он выделен
+  контролируемому proxy.
 - `APP_ALLOWED_HOSTS` запрещает пустые и wildcard значения; production также
   запрещает loopback hosts.
-- Для обычного HTTP возвращается `426`; маршруты доступны только через
-  TLS. Hypercorn запускается с сертификатом/ключом и HTTP/2 ALPN. Локальный
-  self-signed сертификат предназначен только для разработки.
+- Compose публикует только Nginx на `127.0.0.1:8000`; host-порт приложения
+  не открыт. Nginx принимает TLS 1.2/1.3, ограничивает тело запроса 64 KiB,
+  соединения и частоту login; query strings не включаются в access log.
+  Ответы не буферизуются во временные файлы на диске.
+  Локальный Compose использует self-signed сертификат и незашифрованный HTTP
+  только между контейнерами во внутренней сети; это не production deployment.
+- `make run` — отдельный режим прямого локального запуска: Hypercorn
+  использует сертификат/ключ и HTTP/2 ALPN. Production требует действующий
+  сертификат, проверенные allowed hosts, TLS к базам и явную модель доверия
+  прокси, если он используется.
 - Ответы включают HSTS, `X-Content-Type-Options`, `X-Frame-Options`,
-  `Referrer-Policy` и ограничительную `Permissions-Policy`; auth-ответы имеют
-  `Cache-Control: no-store`.
+  `Referrer-Policy`, `Permissions-Policy` и ограничительную CSP;
+  auth- и media-ответы имеют `Cache-Control: private, no-store`.
 - `APP_ENV=production` требует `rediss://`, TLS в `DATABASE_URL` и реальные
   non-loopback `APP_ALLOWED_HOSTS`.
 
@@ -299,12 +353,23 @@ docker compose exec app python -m app.auth.cli rotate-password
   изменения baseline требуют ревью, реальные credentials нельзя allowlist-ить.
 - `uv.lock` фиксирует runtime и dev зависимости; CI запускает `pip-audit`
   через OSV и падает при известных уязвимостях или ошибке аудита.
+- Frontend build dependencies закреплены в `frontend/package-lock.json`;
+  `npm audit --prefix frontend` проверяет этот lockfile.
 - Bandit, Semgrep, actionlint и zizmor анализируют Python и GitHub workflows;
   GitHub Actions закреплены полными commit SHA.
 - CodeQL анализирует Python; Trivy блокирует image с исправляемыми HIGH и
   CRITICAL CVE.
 - Docker multi-stage, runtime под непривилегированным UID; контекст сборки
-  исключает локальные секреты, тесты и отчёты.
+  исключает локальные секреты, тесты, отчёты и каталог медиа. Операторские
+  медиа монтируются только для чтения во время работы.
+- API работает с read-only root filesystem, временным `/tmp`, удалёнными
+  Linux capabilities и `no-new-privileges`. Redis также read-only с
+  ограниченным `/tmp`; у Nginx read-only root и только `CHOWN`, `SETUID` и
+  `SETGID` для временных путей и непривилегированных workers.
+- Выдача медиа read-only и закрыта для пользователей без admin-сессии.
+  Локальные browser-файлы не загружаются. Endpoint загрузки и worker не
+  реализованы: см. [media.md](media.md) и
+  [будущую спецификацию](roadmap/05-media-pipeline.md).
 
 ## Аудит, приватность и восстановление
 
@@ -341,6 +406,6 @@ make architecture
 make validate-specs
 ```
 
-Compose-проверка дополнительно требует Docker и локальный сертификат
+Nginx/Compose-проверки требуют Docker и локальный сертификат
 (`make dev-certs`). Не направляйте нагрузочные и provisioning-команды на
 production или сторонние системы.

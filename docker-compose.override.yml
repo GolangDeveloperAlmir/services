@@ -10,12 +10,10 @@ services:
       - ./migrations:/app/migrations
       - ./scripts:/app/scripts
       - ./alembic.ini:/app/alembic.ini:ro
-      - ./certs:/certs:ro
+      - ./frontend/public:/app/frontend/public:ro
     command:
       - sh
       - -ec
       - |
         alembic upgrade head
-        exec hypercorn app.main:app --bind 0.0.0.0:8000 \
-          --certfile /certs/server.crt --keyfile /certs/server.key \
-          --alpn-protocols h2,http/1.1 --reload
+        exec hypercorn app.main:app --bind 0.0.0.0:8000 --reload

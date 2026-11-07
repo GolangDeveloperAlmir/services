@@ -4,13 +4,16 @@
 
 ```mermaid
 flowchart LR
-    Client["Admin client"] -->|"TLS / HTTP2"| Hypercorn["Hypercorn + FastAPI"]
+    Client["Admin client"] -->|"TLS 1.2+ / HTTP2"| Nginx["Nginx TLS ingress"]
+    Nginx -->|"HTTP on isolated proxy network"| Hypercorn["Hypercorn + FastAPI"]
     Hypercorn --> Auth["app.auth: local identity and admin policy"]
     Hypercorn --> Users["app.users: profile API and service"]
+    Hypercorn --> Media["app.media: admin-only curated media"]
     Users --> Auth
     Auth --> DB["PostgreSQL: accounts, credentials, roles, audit"]
     Users --> DB
     Auth --> Redis["Redis: opaque sessions and rate limits"]
+    Media --> Assets["Read-only operator-managed media directory"]
     Hypercorn -. optional OTLP traces .-> Collector["OpenTelemetry Collector"]
 ```
 
@@ -20,6 +23,16 @@ authorization; `app.db` owns persistence models and connections; `app.core`
 owns settings, logging, and telemetry. The profile model lives in
 `app.db.user_model` so auth and profile code share one persistence entity
 without importing one another's domain package.
+
+The same HTTPS origin serves a small administrator web console from
+`frontend/public`: `/` returns the HTML entry point and `/assets/*` serves its
+compiled TypeScript and stylesheet. The console calls the existing `/auth`,
+`/users`, and admin-only `/media` endpoints; it does not introduce a separate
+authentication or authorization layer. Its short-lived bearer token stays in
+tab memory and is not persisted in browser storage. Local media file selection
+remains in the browser and is never uploaded. The Docker build compiles
+TypeScript from the locked frontend toolchain and includes only the public
+assets in the runtime image.
 
 All profile routes require an active local administrator. The role and account
 state are checked against PostgreSQL on authenticated requests. Redis stores
@@ -41,20 +54,34 @@ while administrator invariants use a PostgreSQL advisory transaction lock.
 
 ## Trust boundaries and transport
 
-Hypercorn terminates TLS and negotiates HTTP/2 using ALPN. Plain HTTP receives
-`426 Upgrade Required`. Compose publishes the application only on the host's
-loopback interface; PostgreSQL and Redis are not publicly published. The
-development certificate is self-signed and must never be reused in production.
+In Compose, Nginx terminates TLS 1.2/1.3 and forwards requests over HTTP only
+to the application on an isolated Docker proxy network. Nginx alone joins
+that network and a separate published ingress bridge; its host port is bound
+to `127.0.0.1:8000`. The application has no published host port. PostgreSQL
+and Redis are reachable only on the internal data network. Nginx overwrites
+forwarded headers, and the application accepts them only from its explicitly
+configured proxy IP. The development certificate is self-signed and must
+never be reused in production. The local Compose stack is for development,
+not production: use TLS-enabled PostgreSQL and Redis and a reviewed
+network/TLS configuration for production.
 
+Outside Compose, `make run` starts Hypercorn directly with TLS certificates.
 Production configuration is validated at startup: explicit allowed hosts,
 TLS-enabled PostgreSQL, TLS-enabled Redis with a password, and
 `APP_ENV=production`. There is no implicit trust of forwarded client-IP
-headers. Proxy deployments need an explicit, reviewed proxy trust design.
+headers.
 
-Hypercorn завершает TLS и согласует HTTP/2 через ALPN. Обычный HTTP получает
-`426`. Compose публикует приложение только на loopback интерфейсе; PostgreSQL
-и Redis не публикуются наружу. Self-signed сертификат предназначен только
-для разработки.
+В Compose TLS завершает Nginx; он один подключён к опубликованной ingress-сети
+и внутренней proxy-сети. Его host-порт привязан к `127.0.0.1:8000`; приложение
+не имеет опубликованного host-порта, а PostgreSQL/Redis доступны только во
+внутренней data-сети. Вне Compose Hypercorn может запускаться напрямую с TLS.
+Для production обязательны явные hosts, TLS PostgreSQL/Redis и пароль Redis.
+Подробности описаны в [security.md](security.md) и [data-model.md](data-model.md).
+
+Каталог медиа доступен только администратору и монтируется read-only. Выбор
+локальных файлов остаётся в браузере; загрузки и worker не реализованы.
+Подробности: [media.md](media.md) и будущая спецификация
+[roadmap/05-media-pipeline.md](roadmap/05-media-pipeline.md).
 
 ## Module boundaries
 
@@ -87,10 +114,11 @@ entities.
 
 ## Operations and CI
 
-`docker-compose.yml` runs the API, PostgreSQL, and password-protected Redis.
-The API uses a non-root multi-stage image and requires mounted TLS material.
-`docker-compose.override.yml` adds source reload and a loopback-only database
-port for local development. The Dev Container uses the same project toolchain.
+`docker-compose.yml` runs Nginx, the API, PostgreSQL, and password-protected
+Redis. The API uses a non-root, read-only multi-stage image; Nginx terminates
+TLS using mounted certificate material. `docker-compose.override.yml` adds
+source reload and a loopback-only database port for local development. The Dev
+Container uses the same project toolchain.
 
 CI runs tests, architectural checks, dependency and secret scans, SAST,
 workflow linting, CodeQL, a Trivy image gate, and a loopback-only authenticated

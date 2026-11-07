@@ -1,8 +1,17 @@
-.PHONY: install lint format test architecture specs openapi validate-specs hooks check security run migrate docker-build compose-config dev-certs up perf-smoke perf
+.PHONY: install lint format test architecture specs openapi validate-specs hooks check security run migrate docker-build compose-config nginx-check dev-certs up perf-smoke perf frontend-install frontend-build frontend-check
 
 PERF_USERS ?= 100
 PERF_SPAWN_RATE ?= 10
 PERF_RUN_TIME ?= 5m
+
+frontend-install:
+	cd frontend && npm ci
+
+frontend-build:
+	cd frontend && npm run build
+
+frontend-check:
+	cd frontend && npm run check
 
 install:
 	uv sync --all-groups
@@ -32,6 +41,7 @@ validate-specs:
 	uv run pytest tests/test_specs.py
 
 security:
+	npm audit --prefix frontend --audit-level=moderate
 	@tmpfile=$$(mktemp); \
 	trap 'rm -f "$$tmpfile"' EXIT; \
 	uv export --locked --format requirements-txt --all-groups --no-emit-project > "$$tmpfile"; \
@@ -43,7 +53,7 @@ security:
 hooks:
 	uv run pre-commit run --all-files --config .pre-commit-config.yaml
 
-check: lint test architecture validate-specs security
+check: lint test architecture validate-specs security frontend-check
 
 run:
 	uv run hypercorn app.main:app --bind 127.0.0.1:8000 --certfile certs/server.crt --keyfile certs/server.key --alpn-protocols h2,http/1.1 --reload
@@ -57,8 +67,8 @@ dev-certs:
 		-keyout certs/server.key -out certs/server.crt \
 		-subj "/CN=localhost" \
 		-addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
-		-addext "basicConstraints=critical,CA:TRUE" \
-		-addext "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign" \
+		-addext "basicConstraints=critical,CA:FALSE" \
+		-addext "keyUsage=critical,digitalSignature,keyEncipherment" \
 		-addext "extendedKeyUsage=serverAuth"
 
 up:
@@ -69,6 +79,16 @@ docker-build:
 
 compose-config:
 	docker compose config --quiet
+
+nginx-check:
+	docker run --rm --network none --read-only \
+		--tmpfs /tmp:size=32m,mode=1777 \
+		--cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID \
+		--security-opt no-new-privileges:true \
+		--volume "$(CURDIR)/nginx/default.conf:/etc/nginx/nginx.conf:ro" \
+		--volume "$(CURDIR)/nginx/proxy_params:/etc/nginx/proxy_params:ro" \
+		--volume "$(CURDIR)/certs:/etc/nginx/certs:ro" \
+		--entrypoint nginx nginx:1.28-alpine -t
 
 perf-smoke:
 	mkdir -p reports

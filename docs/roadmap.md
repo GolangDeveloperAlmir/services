@@ -34,6 +34,10 @@
 5. **Масштабировать по измеренным ограничениям.** Выбирать пагинацию,
    оптимизацию запросов, кэширование и асинхронную обработку только после
    получения воспроизводимых профилей нагрузки и целевых SLO.
+6. **Безопасно принимать пользовательские медиа только после отдельного
+   решения.** Текущий каталог read-only и управляется оператором; загрузки
+   отключены. Целевой quarantine/worker/cleanup pipeline описан как будущее
+   ТЗ в [05-media-pipeline.md](roadmap/05-media-pipeline.md).
 
 ## 1. Статус и правила чтения
 
@@ -101,6 +105,7 @@
 | `PLAN-02` | P1, условно | Организации, tenant isolation и granular RBAC | `PLAN-00`, `PLAN-01` | [02-multi-tenancy-rbac.md](roadmap/02-multi-tenancy-rbac.md) |
 | `PLAN-03` | P1/P2, условно | MFA, OIDC и жизненный цикл пользовательского аккаунта | `PLAN-00`, модель доступа из `PLAN-02` при multi-tenant запуске | [03-identity-lifecycle.md](roadmap/03-identity-lifecycle.md) |
 | `PLAN-04` | P2/P3, условно | Надёжность, измерение производительности и масштабирование | `PLAN-01`; реальные профили использования | [04-reliability-scale.md](roadmap/04-reliability-scale.md) |
+| `PLAN-05` | P1, условно | Безопасный импорт медиа и изолированная обработка | `PLAN-00`, `PLAN-01`; отдельное решение о приёме пользовательских файлов | [05-media-pipeline.md](roadmap/05-media-pipeline.md) |
 
 ### Предлагаемые этапы
 
@@ -245,6 +250,7 @@ single-operator API. Этап 4 не следует начинать тольк�
 - [02 — Организации, tenant isolation и RBAC](roadmap/02-multi-tenancy-rbac.md)
 - [03 — Identity и жизненный цикл аккаунта](roadmap/03-identity-lifecycle.md)
 - [04 — Надёжность, производительность и масштабирование](roadmap/04-reliability-scale.md)
+- [05 — Безопасный импорт и обработка медиа](roadmap/05-media-pipeline.md)
 
 ## English summary
 
@@ -254,6 +260,8 @@ self-service, MFA, SSO/OIDC, automated audit retention, or approved production
 SLOs. The proposed order is: resolve product and operating decisions, establish
 production readiness, add tenant-aware authorization only if multi-organization
 use is confirmed, add identity workflows only for agreed requirements, and
-scale only against measured workloads. Each initiative has a separate Russian
+scale only against measured workloads. User media ingestion remains disabled
+until its isolated processing design and operating limits are approved. Each
+initiative has a separate Russian
 technical specification, explicit decision gates, migration/test requirements,
 and acceptance criteria.

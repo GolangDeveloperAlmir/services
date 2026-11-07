@@ -22,9 +22,12 @@ make dev-certs
 make up
 ```
 
-Локальный API: `https://localhost:8000`; `/docs`, `/openapi.json` и `/redoc`
+Локальный API: `https://127.0.0.1:8000`; `/docs`, `/openapi.json` и `/redoc`
 доступны только через HTTPS. Браузер будет предупреждать о self-signed
 сертификате — это ожидаемо только для разработки. Не используйте его в
+production. TLS завершается на Nginx; backend, PostgreSQL и Redis не
+публикуются напрямую на host. Приложение получает HTTP только из внутренней
+Docker-сети. Этот Compose рассчитан на локальную разработку, а не на
 production.
 
 Создайте первого администратора после старта стека:
@@ -63,10 +66,42 @@ opaque bearer-токен. Передавайте его как `Authorization: B
 Контракт запросов, ошибок и правила защиты профиля описаны в
 [документации API](docs/api.md).
 
+### Веб-панель
+
+После запуска стека откройте `https://127.0.0.1:8000/` и войдите под активной
+учётной записью администратора. Панель позволяет просматривать список
+профилей с постраничной навигацией, искать на загруженной странице, создавать
+и редактировать профиль, менять его активность и удалять его. Поиск работает
+только по текущей странице; сам API возвращает не более 25 записей на страницу
+в интерфейсе. Создание профиля не создаёт credentials или права входа.
+
+Bearer-токен хранится только в памяти открытой вкладки и не записывается в
+local storage; после перезагрузки страницы нужно войти повторно. Для локальной
+работы без Docker соберите TypeScript перед запуском: `make frontend-install`
+и `make frontend-build`. Docker image собирает frontend автоматически.
+
+### Фоны и музыка
+
+Панель предлагает анимированные CSS-заглушки для мегаполиса, природы, океана,
+пляжа и аниме-вдохновлённой сцены, переключатель RU/EN и управление анимацией.
+Реальных изображений/музыки в репозитории нет. Администратор может выбрать
+защищённый API-каталог или файл из браузера. Локальные файлы не отправляются
+на сервер; API-каталог доступен только авторизованным администраторам.
+
+Каталог оператора находится в `media/backgrounds/{city,nature,ocean,beach,anime}`
+и `media/music/ambient`; поддерживаются JPG/JPEG, PNG, WebP, MP3, OGG и WAV,
+до 15 MiB на файл. Добавляйте только медиа с проверенными правами использования.
+Endpoint загрузки и worker обработки пользовательских файлов пока отключены;
+не подключайте недоверенный каталог на запись. Ограничения, поведение и
+будущая спецификация обработки описаны в [docs/media.md](docs/media.md) и
+[docs/roadmap/05-media-pipeline.md](docs/roadmap/05-media-pipeline.md).
+
 ### Разработка и проверки
 
 ```sh
 uv sync --locked --all-groups
+make frontend-install
+make frontend-build
 make check
 make validate-specs
 make architecture
@@ -85,7 +120,8 @@ make architecture
 
 Начните с [индекса документации](docs/index.md): [архитектура](docs/architecture.md),
 [модель данных и ER-диаграммы](docs/data-model.md), [HTTP API](docs/api.md),
-[безопасность](docs/security.md), [наблюдаемость](docs/observability.md),
+[безопасность](docs/security.md), [медиа](docs/media.md),
+[наблюдаемость](docs/observability.md),
 [нагрузочные проверки](docs/performance.md), [обзор продукта](docs/product-overview.md),
 [план развития и будущие ТЗ](docs/roadmap.md),
 [участие в разработке](CONTRIBUTING.md) и [политика раскрытия](SECURITY.md).
@@ -112,9 +148,12 @@ make dev-certs
 make up
 ```
 
-Local API: `https://localhost:8000`; `/docs`, `/openapi.json`, and `/redoc`
-are HTTPS-only. Browsers will warn about the self-signed certificate; that is
-expected only in development. Never use it in production.
+Local API: `https://127.0.0.1:8000`; `/docs`, `/openapi.json`, and `/redoc`
+are HTTPS-only. TLS terminates at Nginx; the backend, PostgreSQL, and Redis
+are not published directly to the host. The application receives HTTP only
+from the internal Docker network. This Compose stack is for local development,
+not production. Browsers will warn about the self-signed certificate; never
+use it in production.
 
 Create the first administrator after the stack is ready:
 
@@ -152,10 +191,42 @@ ordered newest first. PATCH accepts only supplied, non-null `email`,
 See the [API documentation](docs/api.md) for request contracts, errors, and
 profile safety rules.
 
+### Web console
+
+After starting the stack, open `https://127.0.0.1:8000/` and sign in with an
+active administrator account. The console lists profiles with pagination,
+searches the loaded page, and supports create, edit, activate/deactivate, and
+delete actions. Search is limited to the current page; the UI requests up to
+25 records per page. Creating a profile does not create credentials or grant
+login access.
+
+The bearer token stays in the current tab's memory and is not written to local
+storage; re-authenticate after reloading the page. For a non-Docker local run,
+build TypeScript with `make frontend-install` and `make frontend-build`. Docker
+builds the frontend automatically.
+
+### Backgrounds and music
+
+The console offers animated CSS placeholder scenes for city, nature, ocean,
+beach, and anime-inspired styles, a RU/EN language switch, and a motion
+control. No actual image or music assets are bundled. Administrators can use
+the protected API catalog or choose a browser-local file. Local files are
+never uploaded; the API catalog requires administrator authentication.
+
+The operator-managed catalog lives under
+`media/backgrounds/{city,nature,ocean,beach,anime}` and `media/music/ambient`.
+Supported formats are JPG/JPEG, PNG, WebP, MP3, OGG, and WAV, up to 15 MiB per
+file. Add only media with verified usage rights. Upload endpoints and a worker
+for user files are not implemented; do not mount an untrusted writable media
+directory. See [docs/media.md](docs/media.md) and the future
+[media-pipeline specification](docs/roadmap/05-media-pipeline.md).
+
 ### Development and checks
 
 ```sh
 uv sync --locked --all-groups
+make frontend-install
+make frontend-build
 make check
 make validate-specs
 make architecture
@@ -174,7 +245,8 @@ database. They require `PERF_AUTH_TOKEN`; see
 
 Start at the [documentation index](docs/index.md): [architecture](docs/architecture.md),
 [data model and ER diagrams](docs/data-model.md), [HTTP API](docs/api.md),
-[security](docs/security.md), [observability](docs/observability.md),
+[security](docs/security.md), [media](docs/media.md),
+[observability](docs/observability.md),
 [load testing](docs/performance.md), [product overview](docs/product-overview.md),
 [proposed roadmap and future specifications](docs/roadmap.md),
 [contributing](CONTRIBUTING.md), and [responsible disclosure](SECURITY.md).
