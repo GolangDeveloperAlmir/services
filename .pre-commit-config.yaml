@@ -1,0 +1,56 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/fpgmaas/deptry
+    rev: 0.23.1
+    hooks:
+      - id: deptry
+        args: [app]
+        pass_filenames: false
+
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.14
+    hooks:
+      - id: vulture
+        args: [app, --min-confidence, "100", --ignore-names, cls]
+        pass_filenames: false
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        args: [-ll, -ii, -c, pyproject.toml, -r, app]
+        pass_filenames: false
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/semgrep/semgrep
+    rev: v1.122.0
+    hooks:
+      - id: semgrep
+        args: [--config=semgrep.yml, --error]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: detect-secrets
+        name: scan staged files for secrets
+        entry: uv run --no-sync detect-secrets-hook --baseline .secrets.baseline
+        language: system
+        types: [text]
+        exclude: ^\.secrets\.baseline$

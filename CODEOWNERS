@@ -1,0 +1,5 @@
+# Replace @OWNER/Almir with the repository's actual GitHub org/team if needed.
+* @OWNER/Almir
+
+/SECURITY.md @OWNER/Almir
+/.github/ @OWNER/Almir

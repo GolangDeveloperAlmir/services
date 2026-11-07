@@ -1,0 +1,21 @@
+services:
+  db:
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  app:
+    user: "${LOCAL_UID:-10001}:${LOCAL_GID:-10001}"
+    volumes:
+      - ./app:/app/app
+      - ./migrations:/app/migrations
+      - ./scripts:/app/scripts
+      - ./alembic.ini:/app/alembic.ini:ro
+      - ./certs:/certs:ro
+    command:
+      - sh
+      - -ec
+      - |
+        alembic upgrade head
+        exec hypercorn app.main:app --bind 0.0.0.0:8000 \
+          --certfile /certs/server.crt --keyfile /certs/server.key \
+          --alpn-protocols h2,http/1.1 --reload

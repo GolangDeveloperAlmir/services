@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    working_dir: /workspace
+    user: vscode
+    volumes:
+      - .:/workspace:cached
+      - devcontainer-venv:/workspace/.venv
+    command: sleep infinity
+
+volumes:
+  devcontainer-venv:

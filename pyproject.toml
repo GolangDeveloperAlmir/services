@@ -1,0 +1,66 @@
+[project]
+name = "user-service"
+version = "0.1.0"
+requires-python = ">=3.14"
+
+dependencies = [
+    "fastapi>=0.143.4",
+    "hypercorn>=0.17,<1",
+    "starlette>=1.10,<2",
+    "pydantic>=2.14,<3",
+    "pydantic-settings>=2.10",
+    "email-validator>=2.2",
+    "argon2-cffi>=23.1",
+    "redis>=5,<7",
+
+    "sqlalchemy[asyncio]>=2.1",
+    "asyncpg>=0.30",
+
+    "alembic>=1.17",
+    "python-dotenv>=1.0",
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.27",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.8",
+    "detect-secrets>=1.5,<2",
+    "deptry>=0.23",
+    "import-linter>=2.3",
+    "jsonschema>=4.26",
+    "locust>=2.36",
+    "openapi-spec-validator>=0.7",
+    "pre-commit>=4.2",
+    "pip-audit>=2.9",
+    "pytest>=8.4",
+    "pyyaml>=6.0",
+    "ruff>=0.15",
+    "zizmor>=1.21",
+    "vulture>=2.14",
+    "httpx2>=2.16.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+ignore = ["I001"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.deptry]
+known_first_party = ["app"]
+extend_exclude = ["tests"]
+per_rule_ignores = { DEP002 = ["email-validator", "asyncpg", "alembic", "python-dotenv", "hypercorn"] }
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]

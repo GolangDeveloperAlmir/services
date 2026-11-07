@@ -1,0 +1,53 @@
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: Python version used by the project.
+        required: false
+        type: string
+        default: "3.14"
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-python
+        with:
+          python-version: ${{ inputs.python-version }}
+      - run: cp .env.example .env
+      - run: make check
+      - run: make dev-certs
+      - run: docker compose config --quiet
+      - run: LOCAL_UID="$(id -u)" LOCAL_GID="$(id -g)" docker compose up --build --wait --detach
+      - name: Scan built image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: user-service:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+      - name: Provision temporary test administrator
+        shell: bash
+        run: |
+          token="$(docker compose exec -T -e APP_ENV=test app python -m scripts.provision_perf_admin)"
+          echo "::add-mask::$token"
+          echo "PERF_AUTH_TOKEN=$token" >> "$GITHUB_ENV"
+      - run: make perf-smoke
+      - if: always()
+        run: docker compose down --volumes
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: locust-performance-reports
+          path: reports/load-*
+          if-no-files-found: ignore

@@ -1,0 +1,52 @@
+rules:
+  - id: python-dangerous-eval
+    languages: [python]
+    message: Avoid eval; parse or validate input explicitly.
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-95"
+    pattern: eval(...)
+
+  - id: python-subprocess-shell-true
+    languages: [python]
+    message: Avoid shell=True with subprocess; pass an argument list instead.
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-78"
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+
+  - id: python-unsafe-pickle
+    languages: [python]
+    message: Never deserialize untrusted data with pickle.
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-502"
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+
+  - id: python-unsafe-yaml-load
+    languages: [python]
+    message: Use yaml.safe_load for untrusted YAML.
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-502"
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader, ...)
+
+  - id: python-weak-hash
+    languages: [python]
+    message: Do not use MD5 or SHA-1 for security-sensitive hashing.
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-328"
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)

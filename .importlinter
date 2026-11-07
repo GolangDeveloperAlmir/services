@@ -1,0 +1,12 @@
+[importlinter]
+root_package = app
+
+[importlinter:contract:application_layers]
+name = Application layers point inward
+type = layers
+layers =
+    app.main
+    app.users
+    app.auth
+    app.db
+    app.core

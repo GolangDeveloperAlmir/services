@@ -1,0 +1,25 @@
+* text=auto eol=lf
+*.py text
+*.pyi text
+*.toml text
+*.yaml text
+*.yml text
+*.json text
+*.md text
+*.ini text
+*.cfg text
+*.sh text
+Dockerfile text
+Makefile text
+*.lock text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

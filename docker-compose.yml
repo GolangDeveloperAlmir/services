@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: user_service_test
+      POSTGRES_USER: user_service
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_service -d user_service_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    command:
+      - sh
+      - -ec
+      - exec redis-server --save "" --appendonly no --requirepass "$$REDIS_PASSWORD"
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    image: user-service:ci
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_NAME: User Service
+      APP_ENV: ${APP_ENV:-development}
+      APP_ALLOWED_HOSTS: '${APP_ALLOWED_HOSTS:-["localhost","127.0.0.1","::1"]}'
+      DATABASE_URL: postgresql+asyncpg://user_service:${POSTGRES_PASSWORD}@db:5432/user_service_test
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-900}
+      AUTH_RATE_LIMIT_ATTEMPTS: ${AUTH_RATE_LIMIT_ATTEMPTS:-5}
+      AUTH_RATE_LIMIT_WINDOW_SECONDS: ${AUTH_RATE_LIMIT_WINDOW_SECONDS:-900}
+      AUTH_IP_RATE_LIMIT_ATTEMPTS: ${AUTH_IP_RATE_LIMIT_ATTEMPTS:-30}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-user-service}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./certs:/certs:ro
+    command:
+      - sh
+      - -ec
+      - |
+        alembic upgrade head
+        exec hypercorn app.main:app --bind 0.0.0.0:8000 \
+          --certfile /certs/server.crt --keyfile /certs/server.key \
+          --alpn-protocols h2,http/1.1
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import ssl, urllib.request; context = ssl.create_default_context(cafile='/certs/server.crt'); urllib.request.urlopen('https://localhost:8000/health/ready', context=context)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  postgres-data:

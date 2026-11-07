@@ -1,0 +1,14 @@
+services:
+  db:
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  app:
+    volumes:
+      - .:/app
+    command:
+      - sh
+      - -c
+      - >-
+        uv run alembic upgrade head &&
+        exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

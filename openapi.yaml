@@ -1,0 +1,630 @@
+openapi: 3.1.0
+info:
+  title: User Service
+  version: 0.1.0
+paths:
+  /users:
+    post:
+      tags:
+      - users
+      summary: Create User
+      description: Create a profile and return its public representation.
+      operationId: create_user_users_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+        '409':
+          description: Email already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - users
+      summary: Get Users
+      description: Return one bounded page of profiles, newest first.
+      operationId: get_users_users_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserRead'
+                title: Response Get Users Users Get
+        '422':
+          description: Invalid pagination
+  /users/{user_id}:
+    get:
+      tags:
+      - users
+      summary: Get User
+      description: Return a profile by UUID or respond with ``404``.
+      operationId: get_user_users__user_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+        '404':
+          description: User not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - users
+      summary: Update User
+      description: Update profile fields while preserving administrator safety invariants.
+      operationId: update_user_users__user_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+        '404':
+          description: User not found
+        '409':
+          description: Duplicate email or administrator invariant
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - users
+      summary: Delete User
+      description: Delete a profile unless doing so violates administrator invariants.
+      operationId: delete_user_users__user_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: User not found
+        '409':
+          description: Administrator invariant
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /auth/login:
+    post:
+      tags:
+      - authentication
+      summary: Login
+      description: Authenticate an administrator and return a short-lived bearer token.
+      operationId: login_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /auth/logout:
+    post:
+      tags:
+      - authentication
+      summary: Logout
+      description: Revoke the current bearer token and return an empty success response.
+      operationId: logout_auth_logout_post
+      responses:
+        '204':
+          description: Successful Response
+      security:
+      - HTTPBearer: []
+  /auth/me:
+    get:
+      tags:
+      - authentication
+      summary: Get Current Identity
+      description: Return the identity and role associated with the current session.
+      operationId: get_current_identity_auth_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticatedUser'
+      security:
+      - HTTPBearer: []
+  /auth/password:
+    post:
+      tags:
+      - authentication
+      summary: Change Password
+      description: Change the current administrator password and invalidate its sessions.
+      operationId: change_password_auth_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /auth/admins/{target_user_id}:
+    post:
+      tags:
+      - authentication
+      summary: Grant Admin
+      description: Assign admin to another user after reauthenticating the actor.
+      operationId: grant_admin_auth_admins__target_user_id__post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: target_user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Target User Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminGrantRequest'
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /auth/admins/{target_user_id}/revoke:
+    post:
+      tags:
+      - authentication
+      summary: Revoke Admin
+      description: Remove another admin role after reauthenticating the actor.
+      operationId: revoke_admin_auth_admins__target_user_id__revoke_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: target_user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Target User Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminRevokeRequest'
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /auth/audit:
+    get:
+      tags:
+      - authentication
+      summary: Read Security Audit
+      description: Return a bounded newest-first view of security audit events.
+      operationId: read_security_audit_auth_audit_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SecurityAuditRecord'
+                title: Response Read Security Audit Auth Audit Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AdminGrantRequest:
+      properties:
+        current_password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          format: password
+          title: Current Password
+          writeOnly: true
+        target_password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          format: password
+          title: Target Password
+          writeOnly: true
+      additionalProperties: false
+      type: object
+      required:
+      - current_password
+      - target_password
+      title: AdminGrantRequest
+      description: Reauthentication and initial/rotated credential for an admin grant.
+    AdminRevokeRequest:
+      properties:
+        current_password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          format: password
+          title: Current Password
+          writeOnly: true
+      additionalProperties: false
+      type: object
+      required:
+      - current_password
+      title: AdminRevokeRequest
+      description: Current administrator password required to revoke another admin.
+    AuthenticatedUser:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        email:
+          type: string
+          format: email
+          title: Email
+        roles:
+          items:
+            type: string
+          type: array
+          title: Roles
+      type: object
+      required:
+      - id
+      - email
+      - roles
+      title: AuthenticatedUser
+      description: Public identity details for the current administrator session.
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          format: password
+          title: Password
+          writeOnly: true
+      additionalProperties: false
+      type: object
+      required:
+      - email
+      - password
+      title: LoginRequest
+      description: Credentials submitted to the local administrator login endpoint.
+    PasswordChangeRequest:
+      properties:
+        current_password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          format: password
+          title: Current Password
+          writeOnly: true
+        new_password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          format: password
+          title: New Password
+          writeOnly: true
+      additionalProperties: false
+      type: object
+      required:
+      - current_password
+      - new_password
+      title: PasswordChangeRequest
+      description: Current and replacement secrets for password rotation.
+    SecurityAuditRecord:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        actor_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Actor User Id
+        target_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Target User Id
+        event_type:
+          type: string
+          title: Event Type
+        source_ip:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Ip
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+      type: object
+      required:
+      - id
+      - actor_user_id
+      - target_user_id
+      - event_type
+      - source_ip
+      - occurred_at
+      title: SecurityAuditRecord
+      description: Public projection of one persisted security event.
+    TokenResponse:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+        token_type:
+          type: string
+          title: Token Type
+          default: bearer
+        expires_in:
+          type: integer
+          title: Expires In
+      type: object
+      required:
+      - access_token
+      - expires_in
+      title: TokenResponse
+      description: Opaque bearer token and lifetime returned after successful login.
+    UserCreate:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        full_name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Full Name
+      additionalProperties: false
+      type: object
+      required:
+      - email
+      - full_name
+      title: UserCreate
+      description: Fields accepted when creating a profile; credentials are managed
+        separately.
+    UserRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        email:
+          type: string
+          format: email
+          title: Email
+        full_name:
+          type: string
+          title: Full Name
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - email
+      - full_name
+      - is_active
+      - created_at
+      - updated_at
+      title: UserRead
+      description: Public profile representation returned by CRUD endpoints.
+    UserUpdate:
+      properties:
+        email:
+          anyOf:
+          - type: string
+            format: email
+          - type: 'null'
+          title: Email
+        full_name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Full Name
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      additionalProperties: false
+      type: object
+      title: UserUpdate
+      description: Partial profile update that rejects empty payloads and explicit
+        nulls.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer

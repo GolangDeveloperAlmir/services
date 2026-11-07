@@ -1,0 +1,11 @@
+asyncapi: 3.0.0
+info:
+  title: User Service Events
+  version: 0.1.0
+  description: >-
+    This service currently exposes synchronous HTTP endpoints only and does not
+    publish or consume asynchronous messages. This document intentionally has
+    no channels or operations; update it when event-driven interfaces are added.
+servers: {}
+channels: {}
+operations: {}
