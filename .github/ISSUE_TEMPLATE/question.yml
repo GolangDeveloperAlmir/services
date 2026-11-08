@@ -1,0 +1,17 @@
+name: Question
+description: Ask a question about using or configuring the project.
+title: "[Question]: "
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you like to know?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant context
+      description: Include the version and steps you have already tried. Do not include secrets or production data.
+    validations:
+      required: true

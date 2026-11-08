@@ -2,6 +2,8 @@
 name = "user-service"
 version = "0.1.0"
 requires-python = ">=3.14"
+license = "LicenseRef-Almir-Open-Attribution-1.0"
+license-files = ["LICENSE"]
 
 dependencies = [
     "fastapi>=0.143.4",

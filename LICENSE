@@ -1,0 +1,39 @@
+Almir Open Attribution License (AOAL) 1.0
+
+Copyright (c) 2026 ALMIR - Saitov Almir - GolangDeveloperAlmir
+
+This license applies to the original source code, documentation, and other
+materials in this repository that are not accompanied by a separate license
+notice. Third-party components and materials remain subject to their own
+licenses. No trademark rights are granted.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of the licensed materials (the "Work"), to use, reproduce, modify, merge,
+publish, distribute, sublicense, and sell copies of the Work, and to permit
+persons to whom the Work is furnished to do so, subject to the following
+conditions:
+
+1. The copyright notice and this license text must be included in all copies
+   or substantial portions of the Work.
+2. The following attribution and source reference must be retained in
+   accompanying documentation, notices, or other materials customarily used
+   to credit the Work:
+
+   ALMIR - Saitov Almir - GolangDeveloperAlmir
+   Original source: https://github.com/GolangDeveloperAlmir/services
+
+3. If you distribute a modified version, you must clearly indicate that you
+   changed the Work. You may create, publish, and distribute forks, including
+   under a different name, provided that you retain the notices required by
+   this license.
+
+The above conditions do not require a fork or modified version to be hosted
+on the original source platform.
+
+THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE WORK OR THE USE OR OTHER DEALINGS IN THE
+WORK.

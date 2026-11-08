@@ -1,5 +1,4 @@
-# Replace @OWNER/Almir with the repository's actual GitHub org/team if needed.
-* @OWNER/Almir
+* @GolangDeveloperAlmir
 
-/SECURITY.md @OWNER/Almir
-/.github/ @OWNER/Almir
+/SECURITY.md @GolangDeveloperAlmir
+/.github/ @GolangDeveloperAlmir

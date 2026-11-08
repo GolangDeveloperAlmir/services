@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "User Service"
+authors:
+  - family-names: Saitov
+    given-names: Almir
+    affiliation: "ALMIR"
+version: 0.1.0
+license: "LicenseRef-Almir-Open-Attribution-1.0"
+repository-code: "https://github.com/GolangDeveloperAlmir/services"
+keywords:
+  - FastAPI
+  - user service
+  - PostgreSQL
+  - Redis
+abstract: >-
+  An HTTP user-profile service with local administrator authentication,
+  PostgreSQL persistence, Redis-backed sessions, and a web console.

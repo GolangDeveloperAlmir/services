@@ -14,6 +14,10 @@
 - [План развития и будущие технические задания](roadmap.md)
 - [Участие в разработке](../CONTRIBUTING.md)
 - [Политика безопасности](../SECURITY.md)
+- [Правила сообщества](../CODE_OF_CONDUCT.md)
+- [Поддержка](../SUPPORT.md)
+- [Лицензия](../LICENSE)
+- [Цитирование проекта](../CITATION.cff)
 - [Журнал изменений](../CHANGELOG.md)
 
 ## English
@@ -30,6 +34,10 @@
 - [Proposed roadmap and future technical specifications (detailed docs in Russian)](roadmap.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Security policy](../SECURITY.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Support](../SUPPORT.md)
+- [License](../LICENSE)
+- [Citing the project](../CITATION.cff)
 - [Changelog](../CHANGELOG.md)
 
 The Python API documents its public modules, classes, and operations with

@@ -48,7 +48,8 @@ PostgreSQL URL и явные non-loopback hosts. Значения и лимит�
 [документе безопасности](docs/security.md).
 
 Вход выполняется через `POST /auth/login`; ответ содержит короткоживущий
-opaque bearer-токен. Передавайте его как `Authorization: Bearer ...`.
+opaque bearer-токен. Передавайте его в заголовке
+`Authorization: Bearer <token>`.
 Маршруты `/users` закрыты для неаутентифицированных и не-admin пользователей.
 Пароль можно сменить через `POST /auth/password`; отзыв/назначение admin
 требуют повторной проверки пароля.
@@ -126,6 +127,16 @@ make architecture
 [план развития и будущие ТЗ](docs/roadmap.md),
 [участие в разработке](CONTRIBUTING.md) и [политика раскрытия](SECURITY.md).
 
+### Лицензия и поддержка
+
+Проект распространяется по собственной лицензии
+[Almir Open Attribution License (AOAL) 1.0](LICENSE): использование,
+изменение, коммерческое распространение и форки разрешены при сохранении
+атрибуции автора и ссылки на первоисточник. Учитывайте отдельные лицензии
+сторонних компонентов; AOAL является собственной, не стандартной лицензией.
+См. также [правила сообщества](CODE_OF_CONDUCT.md),
+[поддержку](SUPPORT.md) и [цитирование проекта](CITATION.cff).
+
 ## English
 
 User Service is a FastAPI profile service with local administrator
@@ -173,7 +184,7 @@ PostgreSQL URL, and explicit non-loopback hosts. See
 [security documentation](docs/security.md) for all settings and controls.
 
 Authenticate with `POST /auth/login`; the response contains a short-lived
-opaque bearer token. Send it as `Authorization: Bearer ...`. `/users` routes
+opaque bearer token. Send it as `Authorization: Bearer <token>`. `/users` routes
 reject unauthenticated and non-admin callers. Change a password at
 `POST /auth/password`; administrator role changes require password
 reauthentication.
@@ -253,3 +264,13 @@ Start at the [documentation index](docs/index.md): [architecture](docs/architect
 
 The roadmap is a planning document, not a feature or delivery commitment.
 Its detailed technical specifications are currently maintained in Russian.
+
+### License and support
+
+This project is distributed under the custom
+[Almir Open Attribution License (AOAL) 1.0](LICENSE). Use, modification,
+commercial distribution, and forks are permitted when author attribution and
+the original source link are retained. Third-party components may have
+separate licenses; AOAL is a custom, non-standard license. See the
+[Code of Conduct](CODE_OF_CONDUCT.md),
+[support guide](SUPPORT.md), and [citation metadata](CITATION.cff).

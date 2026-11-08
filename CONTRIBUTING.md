@@ -27,6 +27,9 @@ Frontend-проверки требуют `make frontend-install`; для лок�
 Добавляйте содержательные docstrings для новых публичных модулей, классов и
 функций: описывайте контракт, ошибки и важные ограничения, а не пересказывайте
 имя функции. CRUD-изменения проверяйте на уровне service и HTTP API.
+Отправляя вклад, убедитесь, что вправе его предоставить, и соглашаетесь на
+распространение вклада по лицензии репозитория [LICENSE](LICENSE). Соблюдайте
+[правила сообщества](CODE_OF_CONDUCT.md).
 
 ## Development environment
 
@@ -67,6 +70,9 @@ operational changes. Never commit `.env` files, tokens, or production data.
 Add meaningful docstrings to new public modules, classes, and functions;
 describe contracts, errors, and relevant constraints instead of repeating
 symbol names. Cover CRUD changes at both service and HTTP API levels.
+By submitting a contribution, you confirm that you have the right to do so
+and agree that it is distributed under the repository's [LICENSE](LICENSE).
+Please also follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 Review `.secrets.baseline` changes carefully; never baseline real credentials.
 Run `uv lock` and commit `uv.lock` when dependencies change. Pin third-party
 GitHub Actions to full commit SHAs.
