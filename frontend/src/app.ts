@@ -140,9 +140,9 @@ const translations = {
     welcomeBack: "Welcome back",
     loginPrompt: "Sign in with your administrator account.",
     email: "Email",
-    password: "Password",
+    password: "Password", // pragma: allowlist secret
     adminEmailPlaceholder: "admin@example.com",
-    passwordPlaceholder: "Enter your password",
+    passwordPlaceholder: "Enter your password", // pragma: allowlist secret
     signIn: "Sign in",
     secureConnection: "Your connection is secure. Never share your credentials.",
     administrator: "Administrator",
