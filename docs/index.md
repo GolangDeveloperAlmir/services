@@ -3,6 +3,7 @@
 ## На русском
 
 - [Быстрый старт и команды проекта](../README.md)
+- [Авторство и правообладание](../AUTHORS.md)
 - [Архитектура и потоки данных](architecture.md)
 - [Модель данных и ER-диаграммы](data-model.md)
 - [HTTP API и ошибки](api.md)
@@ -24,6 +25,7 @@
 ## English
 
 - [Quick start and project commands](../README.md)
+- [Authorship and ownership](../AUTHORS.md)
 - [Architecture and data flows](architecture.md)
 - [Data model and ER diagrams](data-model.md)
 - [HTTP API and errors](api.md)
