@@ -1,204 +1,214 @@
-# HTTP API / HTTP API
+# HTTP API reference
 
-The API is served over HTTPS at `https://127.0.0.1:8000` in the local Compose
-environment. Nginx terminates TLS and forwards to the private application
-network; the API container has no published host port. OpenAPI JSON is
-`/openapi.json`, Swagger UI is `/docs`, and ReDoc is `/redoc`; none is served
-over cleartext HTTP.
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** current API surface. The generated schema is the contract source to verify before a release.
 
-Локальный Compose публикует API по `https://127.0.0.1:8000`: TLS завершает
-Nginx и передаёт запросы во внутреннюю сеть приложения; host-порт API не
-публикуется. OpenAPI JSON доступен по `/openapi.json`, Swagger UI — `/docs`,
-ReDoc — `/redoc`; обычный HTTP не обслуживается.
+<a id="english"></a>
+## English
 
-Административная веб-панель доступна по `https://127.0.0.1:8000/`. Она
-использует перечисленные ниже API endpoints и хранит bearer-токен только в
-памяти вкладки; после перезагрузки требуется повторный вход.
+### Base URL and interactive schema
 
-## Authentication / Аутентификация
+In the local Compose environment, the service is available at <code>https://127.0.0.1:8000</code>. Nginx terminates TLS and forwards requests to the private application network; the API container has no published host port. Cleartext HTTP is rejected except for loopback health checks.
 
-| Method | Path | Purpose | Success |
-| --- | --- | --- | --- |
-| `POST` | `/auth/login` | Authenticate an active local administrator | `200` |
-| `POST` | `/auth/logout` | Revoke the current bearer session | `204` |
-| `GET` | `/auth/me` | Return the authenticated administrator | `200` |
-| `POST` | `/auth/password` | Change password after current-password verification | `204` |
-| `POST` | `/auth/admins/{target_user_id}` | Grant admin after reauthentication | `204` |
-| `POST` | `/auth/admins/{target_user_id}/revoke` | Revoke admin after reauthentication | `204` |
-| `GET` | `/auth/audit` | Read recent security events (limit 1–500) | `200` |
+| Resource | Path | Notes |
+| --- | --- | --- |
+| Web console | <code>/</code> | Same-origin administrator UI |
+| OpenAPI JSON | <code>/openapi.json</code> | Generated from the FastAPI application |
+| Swagger UI | <code>/docs</code> | HTTPS only |
+| ReDoc | <code>/redoc</code> | HTTPS only |
 
-`POST /auth/login` returns an opaque bearer token and `expires_in`; send the
-token in `Authorization: Bearer <token>`. Tokens are short-lived and must not
-be logged or stored in browser local storage. All authentication endpoints
-require HTTPS. Password fields reject unknown JSON fields.
-
-`POST /auth/login` возвращает opaque bearer-токен и `expires_in`; передавайте
-его в `Authorization: Bearer <token>`. Токен короткоживущий, его нельзя
-логировать или хранить в browser local storage. Все auth endpoints требуют
-HTTPS.
-
-## User profiles / Профили пользователей
-
-All profile routes require a valid session for an active `admin` account.
-There is no public registration or non-admin access.
-
-Все profile-маршруты требуют действующую сессию активного пользователя с
-ролью `admin`. Публичной регистрации и non-admin доступа нет.
+### Authentication endpoints
 
 | Method | Path | Purpose | Success |
 | --- | --- | --- | --- |
-| `POST` | `/users` | Create a profile, not credentials or an admin account | `201` |
-| `GET` | `/users` | List profiles (`offset >= 0`, `1 <= limit <= 100`), newest first | `200` |
-| `GET` | `/users/{user_id}` | Read profile by UUID | `200` |
-| `PATCH` | `/users/{user_id}` | Update provided fields | `200` |
-| `DELETE` | `/users/{user_id}` | Delete profile | `204` |
+| POST | <code>/auth/login</code> | Authenticate an active local administrator | 200 |
+| POST | <code>/auth/logout</code> | Revoke the current bearer session | 204 |
+| GET | <code>/auth/me</code> | Return the authenticated administrator | 200 |
+| POST | <code>/auth/password</code> | Change password after current-password verification | 204 |
+| POST | <code>/auth/admins/{target_user_id}</code> | Grant admin after reauthentication | 204 |
+| POST | <code>/auth/admins/{target_user_id}/revoke</code> | Revoke admin after reauthentication | 204 |
+| GET | <code>/auth/audit</code> | Read recent security events; limit 1–500 | 200 |
 
-`UserCreate` requires a valid email and `full_name` of 1–120 trimmed
-characters. PATCH accepts `email`, `full_name`, and `is_active`; at least one
-field must be provided and fields cannot be null. Extra fields are rejected.
-Deactivating or deleting an administrator is denied if it would leave no
-active administrator; an administrator cannot disable/delete their own
-account. Email addresses are normalized consistently for creation, update, and
-authentication. Duplicate email addresses return `409`; unknown profile IDs
-return `404`. Listing is ordered by descending creation time with UUID as a
-stable tie-breaker.
+Login returns an opaque bearer token and <code>expires_in</code>. Send the token as <code>Authorization: Bearer &lt;token&gt;</code>. Tokens are short-lived; never log them or store them in browser local storage. Password fields reject unknown JSON fields. A failed or limited login returns 401 or 429 respectively; rate-limit responses include <code>Retry-After</code>.
 
-Creating a profile creates only a `users` row. It does not create local
-credentials, enable login, or assign a role. Administrator access is provisioned
-separately through the protected admin-management flow. Email is case-folded
-before persistence and duplicate checks; the database unique constraint remains
-the final guard against concurrent duplicate creates/updates.
+### Profile endpoints
+
+All profile routes require a valid session for an active <code>admin</code> account. There is no public registration or non-admin access.
+
+| Method | Path | Purpose | Success |
+| --- | --- | --- | --- |
+| POST | <code>/users</code> | Create a profile, not credentials or an administrator account | 201 |
+| GET | <code>/users</code> | List profiles; offset ≥ 0, limit 1–100, newest first | 200 |
+| GET | <code>/users/{user_id}</code> | Read profile by UUID | 200 |
+| PATCH | <code>/users/{user_id}</code> | Update supplied fields | 200 |
+| DELETE | <code>/users/{user_id}</code> | Delete profile | 204 |
+
+Create requires a valid email and a trimmed <code>full_name</code> of 1–120 characters. PATCH accepts <code>email</code>, <code>full_name</code> and <code>is_active</code>; at least one field must be supplied and fields cannot be null. Unknown fields are rejected.
+
+Email is case-folded before persistence and uniqueness checks. Duplicate addresses return 409; unknown UUIDs return 404. Listing uses <code>created_at DESC, id ASC</code> with bounded pagination. The database unique constraint remains the final guard against concurrent duplicate writes.
+
+Creating a profile inserts only a profile row. It does not create credentials, enable login or assign a role. Administrator access is provisioned separately through the protected admin-management flow. An administrator cannot disable or delete their own account, and an operation that would leave no active administrator is rejected. Deactivation/deletion of an administrator invalidates relevant sessions.
 
 Create request:
 
-```json
+~~~json
 {
   "email": "person@example.com",
   "full_name": "Example Person"
 }
-```
+~~~
 
 PATCH request:
 
-```json
+~~~json
 {
   "full_name": "Updated Name"
 }
-```
+~~~
 
-An empty PATCH body, explicit `null`, an unknown field, or an out-of-range
-pagination value is rejected with `422`. Profile creation and update return
-`409` on duplicate email. Deletion returns an empty `204` response. Deactivating
-or deleting an admin invalidates its sessions; admin self-deactivation,
-self-deletion, and loss of the last active admin are rejected with `409`.
+Empty PATCH bodies, explicit null values, unknown fields and invalid pagination are rejected with 422. Delete returns an empty 204 response.
 
-`UserCreate` требует корректный email и `full_name` длиной 1–120 символов
-после обрезки пробелов. PATCH принимает `email`, `full_name` и `is_active`;
-нужно передать хотя бы одно поле, `null` запрещён. Неизвестные поля
-отклоняются. Последнего активного администратора нельзя отключить или
-удалить; администратор не может отключить или удалить собственный аккаунт.
-Email нормализуется одинаково при создании, обновлении и аутентификации.
-Дубликат email возвращает `409`, неизвестный UUID профиля — `404`. Список
-сортируется по времени создания от новых к старым, UUID разрешает совпадения.
+### Curated media endpoints
 
-Создание профиля добавляет только запись `users`: пароль, локальный credential
-и роль при этом не создаются. Административный доступ выдаётся отдельно через
-защищённое управление ролями. Email приводится к case-folded виду перед
-сохранением и проверкой уникальности; ограничение БД защищает также от
-конкурентного создания/обновления дубликатов.
+| Method | Path | Purpose | Success |
+| --- | --- | --- | --- |
+| GET | <code>/media/catalog</code> | List curated background and audio metadata | 200 |
+| GET | <code>/media/{media_id}</code> | Stream one item by opaque ID | 200 |
+
+The catalog is operator-managed and read-only. It includes regular files under <code>media/backgrounds/{city,nature,ocean,beach,anime}</code> and <code>media/music/ambient</code>. Supported extensions are JPG/JPEG, PNG, WebP, MP3, OGG and WAV; each file is limited to 15 MiB and the catalog to 500 eligible files. Symlinks, unsupported extensions and files outside fixed directories are excluded. The API does not scan or transcode operator-provided files. There is no upload endpoint.
+
+Catalog and media requests require an active administrator session and HTTPS. An unavailable catalog root or an excessive file count returns 503; unknown media IDs return 404. A local file selected in the browser is not sent to the server.
+
+### Health endpoints
+
+| Method | Path | Meaning |
+| --- | --- | --- |
+| GET | <code>/health/live</code> | Liveness probe |
+| GET | <code>/health/ready</code> | Readiness probe for required dependencies |
+
+Health endpoints are intended for infrastructure checks. They are not substitutes for an end-to-end user journey or an externally monitored availability SLO.
+
+### Common status codes
+
+| Status | Meaning |
+| --- | --- |
+| 200 / 201 | Successful read/update or profile creation |
+| 204 | Successful operation with no response body |
+| 401 | Missing/invalid session or credentials |
+| 403 | Authenticated identity lacks administrator authorization |
+| 404 | Profile or media identifier not found |
+| 409 | Duplicate email or administrator invariant would be violated |
+| 422 | Invalid payload, UUID or query parameter |
+| 426 | HTTPS is required |
+| 429 | Login rate limit exceeded; check <code>Retry-After</code> |
+| 503 | Readiness dependency or media catalog unavailable |
+
+### Contract verification
+
+FastAPI generates the committed [OpenAPI snapshot](../openapi.yaml). After changing routes or schemas, run <code>make openapi</code> and <code>make validate-specs</code>, then review the resulting diff. The bundled AsyncAPI validation currently records that no event-driven channels are implemented.
+
+---
+
+<a id="russian"></a>
+## Русский
+
+### Базовый URL и интерактивная схема
+
+В локальном Compose-окружении сервис доступен по адресу <code>https://127.0.0.1:8000</code>. Nginx завершает TLS и передаёт запросы во внутреннюю сеть приложения; API-контейнер не публикует host-порт. Обычный HTTP отклоняется, кроме loopback health checks.
+
+| Ресурс | Путь | Примечание |
+| --- | --- | --- |
+| Веб-панель | <code>/</code> | Same-origin интерфейс администратора |
+| OpenAPI JSON | <code>/openapi.json</code> | Генерируется FastAPI |
+| Swagger UI | <code>/docs</code> | Только HTTPS |
+| ReDoc | <code>/redoc</code> | Только HTTPS |
+
+### Маршруты аутентификации
+
+| Метод | Путь | Назначение | Успех |
+| --- | --- | --- | --- |
+| POST | <code>/auth/login</code> | Аутентификация активного локального администратора | 200 |
+| POST | <code>/auth/logout</code> | Отзыв текущей bearer-сессии | 204 |
+| GET | <code>/auth/me</code> | Получение текущего администратора | 200 |
+| POST | <code>/auth/password</code> | Смена пароля после проверки текущего | 204 |
+| POST | <code>/auth/admins/{target_user_id}</code> | Назначение admin после повторной аутентификации | 204 |
+| POST | <code>/auth/admins/{target_user_id}/revoke</code> | Отзыв admin после повторной аутентификации | 204 |
+| GET | <code>/auth/audit</code> | Получение последних security events; limit 1–500 | 200 |
+
+Вход возвращает непрозрачный bearer-токен и <code>expires_in</code>. Передавайте его как <code>Authorization: Bearer &lt;token&gt;</code>. Токены короткоживущие: не записывайте их в логи или browser local storage. Поля паролей отклоняют неизвестные JSON-поля. Неуспешный вход возвращает 401, превышение лимита — 429 с заголовком <code>Retry-After</code>.
+
+### Маршруты профилей
+
+Все маршруты профилей требуют действующую сессию активного пользователя с ролью <code>admin</code>. Публичной регистрации и доступа для non-admin нет.
+
+| Метод | Путь | Назначение | Успех |
+| --- | --- | --- | --- |
+| POST | <code>/users</code> | Создание профиля, но не credentials или administrator account | 201 |
+| GET | <code>/users</code> | Список профилей; offset ≥ 0, limit 1–100, сначала новые | 200 |
+| GET | <code>/users/{user_id}</code> | Получение профиля по UUID | 200 |
+| PATCH | <code>/users/{user_id}</code> | Обновление переданных полей | 200 |
+| DELETE | <code>/users/{user_id}</code> | Удаление профиля | 204 |
+
+Для создания требуется корректный email и обрезанный по краям <code>full_name</code> длиной 1–120 символов. PATCH принимает <code>email</code>, <code>full_name</code> и <code>is_active</code>; нужно передать хотя бы одно поле, а значения null запрещены. Неизвестные поля отклоняются.
+
+Email приводится к case-folded виду перед сохранением и проверкой уникальности. Дубликат возвращает 409, неизвестный UUID — 404. Список сортируется по <code>created_at DESC, id ASC</code> с ограниченной пагинацией. Уникальный constraint БД остаётся последней защитой от конкурентной записи дубликатов.
+
+Создание профиля добавляет только строку профиля. Credentials, право входа и роль не создаются. Доступ администратора назначается отдельно через защищённое управление ролями. Администратор не может отключить или удалить собственную учётную запись; операция, после которой не останется активных администраторов, отклоняется. Деактивация/удаление администратора отзывает соответствующие сессии.
 
 Пример создания:
 
-```json
+~~~json
 {
   "email": "person@example.com",
   "full_name": "Example Person"
 }
-```
+~~~
 
-Пустой PATCH, явный `null`, неизвестное поле и неверная пагинация отклоняются
-с `422`. Дубликат email при создании/обновлении возвращает `409`. Удаление
-возвращает пустой ответ `204`. Деактивация или удаление администратора
-инвалидирует его сессии; self-deactivation, self-delete и потеря последнего
-активного администратора отклоняются с `409`.
+Пример PATCH:
 
-## Curated media / Каталог медиа
+~~~json
+{
+  "full_name": "Updated Name"
+}
+~~~
 
-The read-only media catalog requires the same active administrator bearer
-session as profile management. Media is delivered from the same HTTPS origin:
+Пустой PATCH, явный null, неизвестные поля и неверная пагинация отклоняются с 422. DELETE возвращает пустой ответ 204.
 
-| Method | Path | Purpose | Success |
-| --- | --- | --- | --- |
-| `GET` | `/media/catalog` | List curated background and music metadata | `200` |
-| `GET` | `/media/{media_id}` | Stream one catalog item by opaque ID | `200` |
-
-The catalog contains only operator-managed regular files under
-`media/backgrounds/{city,nature,ocean,beach,anime}` and `media/music/ambient`.
-Supported extensions are JPG/JPEG, PNG, WebP, MP3, OGG, and WAV. Each file is
-limited to 15 MiB and the catalog to 500 eligible files. Unsupported files,
-symlinks, and entries outside those fixed directories are not served. The
-opaque ID does not accept a filesystem path. The current implementation
-chooses the response MIME type from the extension; it does not scan or
-transcode operator-provided files.
-
-There is no upload API. Choosing a local file in the browser does not send it
-to the backend. See [media documentation](media.md) for directory setup and
-the future isolated processing specification.
-
-`/media/catalog` returns `503` if the configured catalog root is unavailable
-or exceeds its file-count limit. Unknown or invalid media IDs return `404`;
-all media routes also require HTTPS and administrator authorization.
-
-## Каталог медиа
-
-Доступ к read-only каталогу требует такую же активную bearer-сессию
-администратора, как управление профилями. Медиа передаются с того же HTTPS
-origin:
+### Маршруты каталога медиа
 
 | Метод | Путь | Назначение | Успех |
 | --- | --- | --- | --- |
-| `GET` | `/media/catalog` | Метаданные доступных фонов и музыки | `200` |
-| `GET` | `/media/{media_id}` | Потоковая выдача по непрозрачному ID | `200` |
+| GET | <code>/media/catalog</code> | Список метаданных фонов и аудио | 200 |
+| GET | <code>/media/{media_id}</code> | Потоковая выдача по непрозрачному ID | 200 |
 
-Каталог содержит только обычные файлы оператора в
-`media/backgrounds/{city,nature,ocean,beach,anime}` и `media/music/ambient`.
-Разрешены JPG/JPEG, PNG, WebP, MP3, OGG и WAV; размер файла не больше 15 MiB,
-каталог ограничен 500 подходящими файлами. Неподдерживаемые файлы,
-символические ссылки и записи вне указанных директорий не выдаются.
-Непрозрачный ID не принимает путь к файловой системе. MIME выбирается по
-расширению; текущая реализация не сканирует и не перекодирует файлы оператора.
+Каталог доступен только для чтения и управляется оператором. Он включает обычные файлы в <code>media/backgrounds/{city,nature,ocean,beach,anime}</code> и <code>media/music/ambient</code>. Поддерживаются JPG/JPEG, PNG, WebP, MP3, OGG и WAV; до 15 MiB на файл и до 500 подходящих файлов в каталоге. Символические ссылки, неподдерживаемые расширения и файлы вне фиксированных каталогов исключаются. API не сканирует и не перекодирует файлы оператора. Endpoint загрузки отсутствует.
 
-API загрузки отсутствует. Выбор локального файла в браузере не отправляет
-его на backend. Структура каталогов и будущая изолированная обработка описаны
-в [документации медиа](media.md).
+Запросы к каталогу и медиа требуют активную сессию администратора и HTTPS. Недоступный корень каталога или превышение лимита файлов дают 503; неизвестный media ID — 404. Локальный файл, выбранный в браузере, на сервер не отправляется.
 
-Если корень каталога недоступен или превышен лимит файлов, `/media/catalog`
-возвращает `503`. Неизвестный или неверный ID возвращает `404`; для всех
-маршрутов медиа также обязательны HTTPS и права администратора.
+### Health endpoints
 
-## Errors / Ошибки
+| Метод | Путь | Значение |
+| --- | --- | --- |
+| GET | <code>/health/live</code> | Liveness probe |
+| GET | <code>/health/ready</code> | Readiness probe обязательных зависимостей |
 
-| Status | Meaning |
-| --- | --- |
-| `401` | Missing/invalid session or credentials |
-| `403` | Authenticated identity lacks admin authorization |
-| `404` | User UUID not found |
-| `409` | Duplicate email or administrator invariant would be violated |
-| `422` | Invalid payload, UUID, or query parameter |
-| `426` | HTTPS is required |
-| `429` | Login rate limit exceeded; check `Retry-After` |
-| `503` | Readiness check reports unavailable dependencies |
+Health endpoints предназначены для инфраструктурных проверок. Они не заменяют end-to-end пользовательский сценарий или внешний SLO мониторинга доступности.
+
+### Основные status codes
 
 | Статус | Значение |
 | --- | --- |
-| `401` | Нет сессии или credentials неверны |
-| `403` | У аутентифицированного пользователя нет прав admin |
-| `404` | UUID пользователя не найден |
-| `409` | Email занят или нарушится инвариант администратора |
-| `422` | Некорректный payload, UUID или query-параметр |
-| `426` | Требуется HTTPS |
-| `429` | Превышен login rate limit; смотрите `Retry-After` |
-| `503` | Проверка readiness обнаружила недоступную зависимость |
+| 200 / 201 | Успешное чтение/обновление или создание профиля |
+| 204 | Успешная операция без тела ответа |
+| 401 | Сессия отсутствует/некорректна или credentials неверны |
+| 403 | У аутентифицированного субъекта нет прав администратора |
+| 404 | Профиль или media ID не найден |
+| 409 | Email занят или нарушится инвариант администратора |
+| 422 | Некорректный payload, UUID или query-параметр |
+| 426 | Требуется HTTPS |
+| 429 | Превышен login rate limit; проверьте <code>Retry-After</code> |
+| 503 | Недоступна обязательная зависимость readiness или каталог медиа |
 
-The generated [OpenAPI snapshot](../openapi.yaml) is validated against the
-FastAPI application by `make validate-specs`.
+### Проверка контракта
+
+FastAPI генерирует коммитнутый [OpenAPI snapshot](../openapi.yaml). После изменения маршрутов или схем выполните <code>make openapi</code> и <code>make validate-specs</code>, затем проверьте diff. Проверка AsyncAPI пока фиксирует отсутствие реализованных event-driven channels.

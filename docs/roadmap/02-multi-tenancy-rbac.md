@@ -1,230 +1,128 @@
-# 02. Организации, tenant isolation и RBAC
+# PLAN-02: Organizations, tenant isolation and RBAC
 
-> **Статус:** условное будущее ТЗ (`PLAN-02`). Выполнять только после
-> подтверждения multi-organization сценария и решений `ADR-001`–`ADR-003`.
-> Сегодняшний API не предоставляет tenant isolation.
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** conditional future specification. Current API and database do not implement tenant isolation.
 
-## 1. Цель и безопасность
+<a id="english"></a>
+## English
 
-Обеспечить, чтобы пользователь, приглашённый в одну организацию, не мог
-прочитать, изменить, перечислить, удалить или косвенно обнаружить данные
-другой организации. Роль отвечает за **действие**, а tenant-контекст —
-за **область ресурсов**; оба условия должны проверяться на каждом пути.
+### Goal and candidate model
 
-Рекомендуемая исходная модель для оценки: глобальная запись identity/profile,
-организации как отдельная сущность, членство `user ↔ organization` и
-назначения ролей внутри членства. Это предложение, не принятое продуктовое
-решение. Если email/профиль должны быть tenant-specific или пользователь не
-может быть членом нескольких организаций, модель надо пересмотреть до
-миграции.
+Prevent a member of one organization from reading, listing, changing, deleting or indirectly discovering another organization's data. A role describes **what action** is allowed; tenant scope describes **which resources** are in bounds. Both checks are required on every path.
 
-## 2. Цели и не-цели
+A candidate model for review is a global user/profile, organizations, memberships and role assignments scoped to membership. It is not an accepted product decision.
 
-### Цели
-
-- Явная Organization/Tenant с устойчивым UUID и состоянием.
-- Membership со статусом, временем приглашения/активации и, если нужно,
-  пригласившим субъектом.
-- Минимально необходимый RBAC с ограниченными organization scope.
-- Проверка scope в каждом repository query и mutation, включая count,
-  pagination, uniqueness, nested resource, export и background job.
-- Отдельная, явно аудируемая системная административная область.
-- Безопасный перевод legacy пользователей/профилей без неявного объединения
-  или помещения в «общую» организацию.
-
-### Не-цели без отдельного ADR
-
-- Атрибутная политика ABAC, произвольный policy language или пользовательские
-  роли/permissions.
-- Cross-organization поиск, глобальный directory и супер-админский
-  impersonation.
-- Создание организации для любого анонимного посетителя.
-- Перевод профиля в аккаунт или автоматическое назначение credentials.
-- Гарантия криптографической/физической изоляции между tenants. Планируемая
-  граница — прикладная и реляционная; требования сильнее этого требуют
-  отдельной архитектуры.
-
-## 3. Предлагаемая доменная модель
-
-Предварительная схема для проверки в ADR:
-
-```mermaid
+~~~mermaid
 erDiagram
-    ORGANIZATIONS ||--o{ MEMBERSHIPS : has
+    ORGANIZATIONS ||--o{ MEMBERSHIPS : contains
     USERS ||--o{ MEMBERSHIPS : joins
     MEMBERSHIPS ||--o{ MEMBERSHIP_ROLES : receives
     ROLES ||--o{ MEMBERSHIP_ROLES : grants
     ORGANIZATIONS ||--o{ ORGANIZATION_AUDIT_EVENTS : scopes
-    USERS ||--o{ ORGANIZATION_AUDIT_EVENTS : acts
-```
+~~~
 
-Кандидатные сущности и ограничения:
-
-| Сущность | Кандидатные поля/ограничения | Что требуется решить |
+| Entity | Candidate constraints | Decision required |
 | --- | --- | --- |
-| `organizations` | `id`, `name`, `status`, `created_at`, `updated_at`; уникальность slug только если нужен внешний slug | Удаление, блокировка, перенос владения, lifecycle |
-| `memberships` | `organization_id`, `user_id`, `status`, `joined_at`, `invited_by`; уникальность пары `(organization_id, user_id)` | Повторное приглашение, отмена, истечение, rejoin |
-| `roles` | Стабильный идентификатор и ограниченный каталог ролей | Набор ролей, system vs tenant scope, изменение каталога |
-| `membership_roles` | Ссылка на membership и role; составной уникальный ключ | Разрешены ли несколько ролей и кто назначает |
-| organization-owned records | Tenant FK/ownership relation и tenant-scoped индексы/unique constraints | Какие текущие сущности и поля принадлежат организации |
-| audit | Actor, действие, target, organization scope, timestamp, минимальный контекст | Согласовать с `PLAN-01` privacy/retention policy |
+| organizations | UUID, name, status and timestamps | Lifecycle, archive/delete, ownership transfer |
+| memberships | Unique organization/user pair, status and inviter | Reinvite, expiry, revoke and rejoin |
+| roles | Stable identifier and limited catalog | Tenant vs system roles; who manages definitions |
+| membership_roles | Unique membership/role pair | Multiple roles and assignment authority |
+| organization-owned records | Explicit tenant FK and scoped constraints | Which existing records belong to an organization |
+| audit events | Actor, action, target, organization scope and timestamp | Minimum fields and retention alignment |
 
-Схема должна запретить membership к несуществующей организации и
-дублирующиеся назначения. Ограничения БД — дополнительная защита, но не
-замена авторизации. Soft delete/архивация выбираются по требованиям аудита и
-удаления; не вводить оба подхода без определения конечной семантики.
+### Decisions before implementation
 
-### Профиль и уникальность
+Resolve whether identity/profile is global or tenant-specific; whether a person can join multiple organizations; whether email uniqueness stays global or becomes tenant-scoped; who owns email changes; how invitations and organization lifecycle work; and whether a separately audited system-operator boundary is required.
 
-Сейчас таблица профилей использует глобально уникальный нормализованный
-email. До реализации определить:
+Do not weaken the existing unique-email constraint or assign existing profiles to a default organization before an owner mapping and collision report are approved.
 
-1. Один человек — один глобальный профиль или отдельный профиль в каждой
-   организации?
-2. Может ли один email/identity входить в несколько организаций?
-3. Должна ли уникальность быть глобальной, tenant-scoped или отличаться для
-   login identifier и контактного адреса?
-4. Кто владеет изменением email и как подтверждается право на него?
+### Authorization invariants
 
-Не ослаблять constraint и не менять нормализацию до решения и отчёта о
-коллизиях существующих данных.
+- Tenant scope comes from a validated principal/membership or explicitly selected resource that is then authorized. A client-supplied organization ID is not proof of permission.
+- Repository methods require an explicit typed tenant scope. Missing scope must not return a global result.
+- List, count, pagination, filters, sorting, search and export use the same tenant predicate.
+- Update/delete use tenant-scoped lookup and mutation; never perform a global fetch followed by a separate non-atomic permission check.
+- Define a consistent 404/403 anti-enumeration policy for cross-tenant resources.
+- CLI, migrations, background tasks and system jobs use explicit narrow system context, not an implicit HTTP principal.
+- Database constraints reinforce authorization but never replace it.
 
-## 4. Контракт доступа и API
+### Migration and security tests
 
-Конкретные пути — предмет версионирования и клиентского решения. В качестве
-кандидата рассмотреть явные ресурсы `/organizations` и
-`/organizations/{organization_id}/members`; не считать этот пример
-утверждённым контрактом. Запрос не должен определять полномочия простым
-передачей произвольного `organization_id`. Сервер проверяет membership и
-разрешение субъекта для запрошенной организации.
+~~~mermaid
+flowchart LR
+    A["Inventory owners and data"] --> B["Expand compatible schema"]
+    B --> C["Backfill approved mappings"]
+    C --> D["Validate counts, FKs and ownership"]
+    D --> E["Shadow/dual-read outside production"]
+    E --> F["Enforce tenant scope"]
+    F --> G["Contract legacy API after support window"]
+~~~
 
-### Правила tenant-контекста
+Never silently move all legacy records to a default tenant. Backfill must be idempotent and auditable; ambiguous records require owner resolution. Test cross-tenant denial for direct reads, list/count/pagination, filters, sorting, updates, deletes, exports, nested resources, CLI and jobs. Include absent/revoked membership, altered tenant IDs, concurrent role changes, race conditions, orphan records and partial backfills. Verify both SQL/repository scope and HTTP behaviour.
 
-- Tenant scope извлекается из валидированного principal/membership либо
-  ограничивается allowlisted route resource и затем проверяется авторизацией.
-- ID в URL, query, header или body — только выбор ресурса для проверки, не
-  доказательство права.
-- Репозитории принимают явный tenant scope обязательным типизированным
-  параметром; отсутствие scope не возвращает глобальный результат.
-- `list`, `count`, pagination, filtering, sorting и export используют один и
-  тот же tenant predicate.
-- Update/delete сначала выполняются с tenant-scoped lookup; нельзя получить
-  объект глобально, а после этого проверять права отдельным неатомарным шагом.
-- Ошибка «ресурс в другом tenant» не должна давать доступ к его содержимому;
-  единообразно выбрать `404` или `403` для anti-enumeration и закрепить это в
-  API, логах и тестах.
-- Background tasks, CLI, миграции и системные jobs должны явно иметь
-  ограниченный system context; не переиспользовать HTTP principal неявно.
+### Acceptance criteria
 
-### Кандидатная матрица разрешений
+ADRs define profile/identity ownership, membership, email uniqueness, lifecycle and system-operator boundary. Every tenant-owned entity has explicit validated ownership. No read/write/list/count/export/background path accesses tenant data without scope and permission. Cross-tenant negative tests pass at database and HTTP layers, including concurrency. Backfill is repeatable and never auto-assigns ambiguous records. Compatibility and client migration are published before rollout. Audit and operations follow approved privacy policy.
 
-| Действие | `member` | `organization_admin` | `system_operator` |
-| --- | --- | --- | --- |
-| Читать разрешённые записи своей организации | Да, по продуктовой политике | Да | Только через отдельный audited flow |
-| Менять собственный профиль | Только разрешённые поля, после подтверждения | Да, по политике | Не по умолчанию |
-| Пригласить/отозвать членство | Нет | Да, с ограничениями | Только отдельный административный процесс |
-| Назначить роль | Нет | Только подмножество ролей и reauth/step-up, если принято | По специальному разрешению и audit |
-| Читать/изменять данные другой организации | Нет | Нет | Запрещено по умолчанию; break-glass — отдельный ADR |
-| Управлять глобальной платформой | Нет | Нет | Только system-scoped разрешения |
+---
 
-Матрица — черновик. До реализации каждая строка должна быть подтверждена
-владельцем продукта; нужны ограничения на self-removal, последнего владельца,
-выдачу максимальных ролей и удаление организации.
+<a id="russian"></a>
+## Русский
 
-## 5. План перехода данных
+### Цель и кандидатная модель
 
-Миграция не должна назначать всем текущим профилям несуществующую
-«default organization» без подтверждённого владельца данных.
+Не допустить, чтобы участник одной организации мог читать, перечислять, менять, удалять или косвенно обнаруживать данные другой организации. Роль описывает **какое действие** разрешено; tenant scope определяет **какие ресурсы** доступны. Обе проверки обязательны в каждом пути.
 
-### Предлагаемые expand/backfill/validate/contract стадии
+Кандидатная модель для обсуждения: глобальный user/profile, organizations, memberships и назначения ролей внутри membership. Это пока не принятое продуктовое решение.
 
-1. **Inventory:** снять количество профилей/администраторов, найти
-   дубликаты/неоднозначные записи и определить владельца каждого набора.
-   Снимки содержат только защищённые данные; отчёты не коммитить.
-2. **Expand:** добавить новые таблицы и nullable/совместимые ссылки; старый
-   API и schema сохраняют прежнее поведение.
-3. **Backfill:** создать организации и memberships только по утверждённой
-   карте владения. Записывать обработанные/отклонённые записи, контрольные
-   количества и повторяемость job.
-4. **Validate:** проверить FK, membership uniqueness, распределение профилей,
-   права и выборки; провести сверку и утвердить исключения с владельцем данных.
-5. **Dual-read/guard:** при необходимости сначала сравнить старые и новые
-   результаты в непроизводственном окружении; production shadow mode не
-   должен раскрывать данные и не должен менять результат клиенту.
-6. **Enforce:** включить обязательный tenant scope поэтапно после полного
-   backfill и прохождения tenant isolation suite.
-7. **Contract:** удалить старые пути/поля только после периода поддержки,
-   миграции клиентов и отдельного release decision.
+~~~mermaid
+erDiagram
+    ORGANIZATIONS ||--o{ MEMBERSHIPS : contains
+    USERS ||--o{ MEMBERSHIPS : joins
+    MEMBERSHIPS ||--o{ MEMBERSHIP_ROLES : receives
+    ROLES ||--o{ MEMBERSHIP_ROLES : grants
+    ORGANIZATIONS ||--o{ ORGANIZATION_AUDIT_EVENTS : scopes
+~~~
 
-Каждому этапу нужны оценка блокировок и времени на копии production-size
-данных, повторный запуск после частичного сбоя, backup до destructive steps,
-stop condition и проверенный способ восстановления.
+| Сущность | Кандидатные ограничения | Что требуется решить |
+| --- | --- | --- |
+| organizations | UUID, name, status и timestamps | Lifecycle, archive/delete, передача владения |
+| memberships | Уникальная пара organization/user, status и inviter | Повторное приглашение, expiry, revoke и rejoin |
+| roles | Стабильный идентификатор и ограниченный каталог | Tenant или system roles; кто управляет определениями |
+| membership_roles | Уникальная пара membership/role | Несколько ролей и полномочия назначения |
+| organization-owned records | Явный tenant FK и scoped constraints | Какие существующие записи принадлежат организации |
+| audit events | Actor, action, target, organization scope и timestamp | Минимальные поля и связь с retention |
 
-## 6. Тестовая и security матрица
+### Решения до реализации
 
-Обязательные тесты до включения любого tenant API:
+Определить, является identity/profile глобальной или tenant-specific; может ли человек состоять в нескольких организациях; остаётся ли email глобально уникальным или становится tenant-scoped; кто владеет изменением email; как работают приглашения и lifecycle организации; нужна ли отдельная audited-граница системного оператора.
 
-- `member A` не может получить профиль `member B` другого tenant через
-  direct read, update, delete, list, pagination, filters, count, malformed ID
-  или повтор запроса.
-- Невалидный, отсутствующий, отозванный и suspended membership отказывает
-  при каждой операции.
-- Тестируются ошибочно переданный tenant ID, повторные/параллельные запросы,
-  race на изменение membership/role и отзыв сессии.
-- Каждая новая таблица и внешняя ссылка проверяется на уникальность,
-  referential integrity, cascade/RESTRICT поведение и orphan prevention.
-- Сортировки, фильтры, search, экспорт и агрегаты не обходят tenant
-  predicate; ошибка одного tenant не возвращает partial global data.
-- Admin routes, CLI, background jobs и health/debug инструменты имеют явно
-  проверенный scope.
-- Тестируются migration с нулём, ожидаемым объёмом, дубликатами,
-  отсутствующим owner mapping и частично завершённым backfill.
-- OpenAPI security схемы и ошибки соответствуют фактическому
-  authorization behavior; отказ не содержит чужого payload.
-- Набор архитектурных тестов проверяет зависимость auth/domain/repository и
-  не позволяет общему helper скрыто обходить scope.
+Не ослаблять unique-email constraint и не назначать профили в default organization до утверждения owner mapping и отчёта о коллизиях.
 
-Нужно добавить позитивные тесты каждой разрешённой роли, negative-тесты
-каждой границы и отдельный регрессионный набор, который повторяется после
-любого изменения repository/query policy. Одного unit-теста на dependency
-недостаточно: нужны интеграционные проверки SQL и API.
+### Инварианты авторизации
 
-## 7. Rollout и rollback
+- Tenant scope берётся из проверенного principal/membership либо из явно выбранного ресурса, после чего проверяется авторизация. Переданный клиентом organization ID не доказывает наличие прав.
+- Repository methods требуют явный типизированный tenant scope. При его отсутствии глобальный результат не возвращается.
+- List, count, pagination, filters, sorting, search и export используют одинаковый tenant predicate.
+- Update/delete выполняются через tenant-scoped lookup и mutation; нельзя сначала глобально получить запись, а потом отдельным неатомарным шагом проверять права.
+- Нужно определить согласованную anti-enumeration политику 404/403 для межтенантных ресурсов.
+- CLI, migrations, background tasks и system jobs используют явный ограниченный system context, а не неявный HTTP principal.
+- Constraints БД усиливают авторизацию, но не заменяют её.
 
-Перед пилотом: утвердить матрицу ролей, migration report, backup/restore
-evidence, tenant isolation suite, метрики отказов, клиентский контракт,
-support runbook и владельца переключения. Начать на изолированной тестовой
-организации/данных, затем включать ограниченному набору потребителей.
+### Миграция и security-тесты
 
-Откатывать можно только код и новые не обязательные расширения схемы. Если
-данные уже записаны в tenant-формате, rollback не должен удалять membership
-или объединять tenants. Заранее определить forward-fix и restore procedure.
-После переключения обязательного tenant scope запрещено открывать legacy
-глобальные endpoints, если они способны обойти новую модель.
+~~~mermaid
+flowchart LR
+    A["Инвентаризация владельцев и данных"] --> B["Расширение совместимой схемы"]
+    B --> C["Backfill утверждённых связей"]
+    C --> D["Проверка counts, FKs и ownership"]
+    D --> E["Shadow/dual-read вне production"]
+    E --> F["Обязательный tenant scope"]
+    F --> G["Удаление legacy API после периода поддержки"]
+~~~
 
-## 8. Критерии приёмки
+Нельзя молча переносить все legacy-записи в default tenant. Backfill должен быть идемпотентным и аудируемым; неоднозначные записи требуют решения владельца. Проверять отказ межтенантного доступа для direct reads, list/count/pagination, filters, sorting, update, delete, exports, nested resources, CLI и jobs. Включить отсутствующий/отозванный membership, подменённые tenant IDs, конкурентные изменения ролей, race conditions, orphan records и частичные backfills. Проверять и SQL/repository scope, и HTTP-поведение.
 
-- ADR утверждает глобальность identity/profile, membership, email uniqueness,
-  lifecycle и system-admin boundary.
-- Все tenant-owned сущности имеют явное и валидируемое владение.
-- Ни один API/list/count/export/background path не выполняет tenant-owned
-  чтение/изменение без scope и проверки разрешения.
-- Все межтенантные negative-тесты проходят на DB и HTTP уровнях, включая
-  ошибочные и конкурентные сценарии.
-- Backfill идемпотентен, сверяем и испытан на репрезентативной копии;
-  неоднозначные записи не назначаются автоматически.
-- Стратегия совместимости, миграции клиентов и удаления legacy API
-  опубликована до rollout.
-- Audit фиксирует привилегированные назначения и изменения в объёме,
-  утверждённом privacy policy.
-- Документация API, architecture, data model, security и эксплуатационные
-  инструкции обновлена вместе с контрактом.
+### Критерии приёмки
 
-## English summary
-
-`PLAN-02` is conditional on confirmed multi-organization product needs. It
-proposes explicit organizations, memberships, scoped roles, mandatory tenant
-filters in every query and mutation, and a staged migration that never assigns
-legacy data to an unapproved default tenant. API paths, profile/email
-uniqueness, role matrix, and system-operator access all require decisions
-before implementation. Cross-tenant negative tests are release blockers.
+ADR определяют владение profile/identity, membership, уникальность email, lifecycle и границу system operator. Каждая tenant-owned сущность имеет явное и проверяемое владение. Ни один read/write/list/count/export/background path не работает с tenant-данными без scope и permission. Cross-tenant negative tests проходят на уровне БД и HTTP, включая concurrency. Backfill повторяем и не назначает неоднозначные записи автоматически. Совместимость и миграция клиентов опубликованы до rollout. Audit и эксплуатация соответствуют утверждённой privacy policy.

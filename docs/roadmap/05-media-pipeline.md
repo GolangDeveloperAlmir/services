@@ -1,173 +1,150 @@
-# Техническое задание: безопасный импорт и обработка медиа
+# PLAN-05: Secure media ingestion and processing
 
-> **Статус:** предложено; не реализовано и не является обязательством по
-> срокам. До отдельного утверждения файлами управляют доверенные операторы,
-> загрузки через API отключены.
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** proposed future feature. Upload endpoints and processing workers do not exist; the current catalog is read-only.
 
-## 1. Цель и границы
+<a id="english"></a>
+## English
 
-Спроектировать безопасный процесс приёма пользовательских изображений и аудио
-для каталога медиа. Приём не должен давать API-контейнеру доступ к Docker
-socket, исполняемому содержимому или произвольным путям. Каждый импорт должен
-обрабатываться в ограниченной изолированной среде с временным хранилищем,
-лимитами и гарантированной очисткой.
+### Goal and security boundary
 
-В scope:
+Design secure ingestion of user-provided images/audio without granting the API container access to the Docker socket, executable content or arbitrary file paths. Every file must be quarantined and processed in a bounded isolated environment. No user-upload feature is available today.
 
-- создание ограниченного намерения загрузки администратором;
-- карантин исходного файла и очередь обработки;
-- изолированное преобразование только поддерживаемых форматов;
-- проверка результата и публикация в read-only каталог;
-- удаление карантина и временных файлов по завершении, ошибке и TTL;
-- аудит событий без содержимого файла, паролей и bearer-токенов;
-- ограничения ресурсов, частоты и общего объёма хранилища.
+### Scope and terminology
 
-Вне scope без отдельного решения: произвольные архивы, SVG/HTML, документы,
-исполняемые файлы, пользовательские скрипты, публичные загрузки, внешнее
-медиахранилище, генерация изображений и постоянный доступ worker к сети.
+The proposed workflow includes admin-authorized upload intents, quarantined source bytes, a job queue, isolated processing, output verification, publication into a read-only catalog, cleanup and resource quotas.
 
-## 2. Термины и инварианты
+- **Source:** exact bytes accepted into quarantine; never served directly.
+- **Job:** one-time operation with random ID, owner, allowed type and short expiry.
+- **Worker:** separate unprivileged process/container, not the API process and not externally reachable.
+- **Result:** newly decoded/re-encoded and re-verified output; source bytes are never copied directly into the serving catalog.
 
-- **Исходник** — точные байты, принятые в карантин; никогда не обслуживается
-  клиентам и не становится доверенным автоматически.
-- **Job** — одноразовая операция обработки с случайным ID, владельцем,
-  разрешённым типом и коротким сроком действия.
-- **Worker** — отдельный непривилегированный процесс/контейнер, не API
-  приложение и не доступный из внешней сети.
-- **Результат** — новый файл, полученный декодированием/перекодированием и
-  повторной проверкой; исходник не копируется напрямую в каталог выдачи.
-- API не имеет Docker socket, не запускает команды из пользовательских данных
-  и не монтирует каталог карантина для записи.
-- Временные директории и имена создаются сервером из случайного идентификатора;
-  исходное имя является только очищенными метаданными и никогда не частью
-  системного пути.
-- Сбой очереди, scanner или worker не переводит файл в опубликованное
-  состояние; доступ по умолчанию закрыт.
+Arbitrary archives, SVG/HTML, documents, executables, user scripts, anonymous public uploads, image generation and permanent worker network access are out of scope without separate approval.
 
-## 3. Целевой процесс
+### Proposed state machine
 
-1. Администратор создаёт upload intent, задавая один разрешённый тип, размер
-   и категорию. Сервер выдаёт непрозрачный короткоживущий идентификатор,
-   связанный с администратором, квотой и одноразовым состоянием.
-2. Приём поточно ограничивает фактически прочитанные байты, общий размер
-   запроса и скорость; заявленный `Content-Length` не считается достаточной
-   проверкой. Файл записывается только в случайный каталог карантина с
-   закрытыми правами и ограниченной ёмкостью.
-3. До постановки job проверяются одноразовость intent, квота, сигнатура
-   содержимого и согласованность ожидаемого типа. Архивы, polyglot и
-   неподдерживаемые типы отклоняются; MIME и расширение от клиента не являются
-   доказательством формата.
-4. Очередь передаёт worker только job ID и фиксированный профиль обработки.
-   Worker получает ровно один файл и минимальные параметры через контролируемый
-   IPC/очередь; он не принимает произвольную команду или путь.
-5. Оркестратор запускает отдельное одноразовое окружение на job. Оно работает
-   как non-root, с read-only root filesystem, пустым набором capabilities,
-   `no-new-privileges`, без сети, без host PID/IPC, без Docker socket, с
-   ограничениями CPU, RAM, PID и временем выполнения. Ввод доступен read-only,
-   временный output — через ограниченный tmpfs или отдельный volume с
-   серверным случайным именем.
-6. Изображения декодируются библиотекой с ограничениями числа пикселей,
-   кадров, размеров и времени, затем перекодируются в растровый allowlist;
-   метаданные с чувствительными координатами удаляются. Аудио проверяется
-   декодером и ограничениями длительности, каналов, частоты дискретизации,
-   размера и времени. Выходной файл создаётся заново; исходные байты не
-   публикуются.
-7. Результат проверяется повторно: формат по сигнатуре, размер, hash,
-   категория, разрешённое расширение и отсутствие ссылок/побочных файлов.
-   Только после успешной проверки атомарно переводится в состояние published.
-8. Независимый cleanup удаляет исходник и временные данные после завершения,
-   ошибки или истечения TTL; cleanup не зависит от успешного ответа клиенту.
-   Периодическая сверка удаляет orphan jobs после перезапуска и сигнализирует
-   о невозможности очистки.
+~~~mermaid
+stateDiagram-v2
+    [*] --> created
+    created --> receiving
+    receiving --> quarantined
+    quarantined --> processing
+    processing --> published
+    processing --> rejected
+    created --> expired
+    receiving --> rejected
+    quarantined --> expired
+    processing --> cleanup_failed
+    published --> [*]
+    rejected --> [*]
+    expired --> [*]
+~~~
 
-## 4. Требования к API и состояниям
+Transitions must be atomic and monotonic. One upload intent cannot be consumed, processed or published more than once.
 
-Предлагаемые состояния job: `created`, `receiving`, `quarantined`,
-`processing`, `published`, `rejected`, `expired`, `cleanup_failed`.
-Переходы должны быть атомарными и монотонными; повторный приём, повторная
-обработка или публикация одного intent запрещены.
+### Target processing flow
 
-Любые endpoints управления требуют активную admin-сессию и повторную
-авторизацию согласно текущей политике администраторов. Intent ограничен
-категорией, типом, максимальным размером, TTL и числом операций на админа/IP.
-Ответы не раскрывают внутренний путь, имя временного каталога, stderr,
-stack trace или подробности scanner. API не должен подтверждать публикацию,
-пока результат и его метаданные не зафиксированы.
+1. An administrator creates a short-lived one-use upload intent with an allowed category, type and size.
+2. The receiver enforces actual streamed byte count, request size and rate limits. Content-Length alone is not trusted. Bytes go to a random permission-restricted quarantine directory.
+3. Before queueing, validate intent use, quota, file signature and expected type. Reject archives, polyglots and unsupported formats; extension and client MIME are not proof of content type.
+4. The queue passes only a job ID and fixed processing profile to the worker.
+5. A controller launches a one-job isolated runtime: non-root, read-only root filesystem, dropped capabilities, no-new-privileges, no network, no host PID/IPC, no Docker socket, bounded CPU/RAM/PIDs/time and restricted scratch storage.
+6. Decode/re-encode images to a raster allowlist with pixel/frame/dimension/time limits and strip sensitive metadata. Decode audio with duration/channel/sample-rate/size/time constraints. Generate a new output file.
+7. Verify output signature, size, hash, category, allowed extension and absence of extra files, then atomically publish.
+8. Independent cleanup removes source and scratch files after success, failure or TTL. Reconcile orphan jobs after restarts and alert on cleanup failure.
 
-Точные методы/схемы, статусы ошибок, пагинацию каталога и механизм удаления
-должен определить отдельный ADR до реализации. Signed URL допустим только с
-коротким TTL, узким scope и защитой от повторного использования; bearer
-секреты нельзя помещать в access logs или URL.
+### Storage, quotas and threats
 
-## 5. Хранение и очистка
+Quarantine and scratch must be outside the web root and published catalog. Use server-generated paths; never build filesystem paths from user filenames. Restrict per-file size, per-user/admin quota, total storage, queue depth and concurrency. Cleanup must be idempotent and may delete only objects created under the assigned root.
 
-- Карантин и scratch находятся вне webroot и вне read-only каталога выдачи.
-- Изолировать пространство имён на job; права доступа — только worker и
-  cleanup-controller согласно роли.
-- Квоты задаются на файл, пользователя/админа, tenant при его появлении,
-  очередь, общий объём и число параллельных jobs.
-- Задаются TTL карантина, максимальная длительность job, retention отказов
-  и retention опубликованного контента.
-- Cleanup безопасен при повторном вызове и проверяет, что удаляет только
-  объект под выделенным корнем, созданный данной системой. Не применять
-  `rm -rf` с путями, полученными от пользователя.
-- Метрики сообщают число/возраст jobs, занятое место, таймауты и ошибки
-  удаления без имён файлов и содержимого.
+| Threat | Required control |
+| --- | --- |
+| Path traversal / symlink | Server UUID paths, root-bound file operations and link rejection |
+| Oversized file / decompression bomb | Stream byte limits, pixel/frame/duration limits and CPU/RAM/time quotas |
+| MIME/extension spoofing | Signature inspection, real decoder and safe re-encoding |
+| Decoder exploit | One-job worker without network/capabilities or application secrets |
+| Replay/race | One-use intent, atomic state transitions and idempotency |
+| Quarantine leakage | Separate volume/network, no serving endpoint and least privilege |
+| Disk/queue exhaustion | Quotas, backpressure, TTL and alerting |
+| Orphan temporary files | Cleanup on all outcomes, TTL sweeper and reconciliation |
+| Copyright abuse | Admin rights confirmation, removal policy and auditable decision |
 
-## 6. Угрозы и контроль
+### API and acceptance criteria
+
+All management endpoints require an active administrator session. An intent is bound to category, type, maximum size, TTL and per-admin/IP limits. Responses must not reveal internal paths, temporary names, stderr or scanner internals. Define API methods/status codes, catalog pagination, deletion, signed URL policy, storage provider, queue, sandbox runtime, moderation responsibility, media profiles and legal process through ADRs before implementation.
+
+Automated and operational tests must prove: unauthenticated/expired/replayed intents cannot accept bytes; streaming limits work with missing or false Content-Length; traversal, symlinks, double extensions, invalid signatures, polyglots, corrupt files and unsupported formats are rejected; worker has no network/socket/host mounts/backend secrets; output is safe and metadata stripped; failures/timeouts/crashes/restarts/disk-full never publish source bytes; cleanup is repeatable and TTL-bounded; concurrent jobs cannot access one another's data; only verified output is served; logs/audit/traces/metrics/URLs contain no source contents, secrets or internal paths.
+
+---
+
+<a id="russian"></a>
+## Русский
+
+### Цель и граница безопасности
+
+Спроектировать безопасный приём пользовательских изображений и аудио без доступа API-контейнера к Docker socket, исполняемому содержимому или произвольным файловым путям. Каждый файл должен проходить карантин и обработку в ограниченной изолированной среде. Сейчас функции пользовательской загрузки нет.
+
+### Scope и термины
+
+Предлагаемый процесс включает upload intents с авторизацией администратора, карантин исходных байтов, очередь jobs, изолированную обработку, проверку результата, публикацию в read-only каталог, очистку и ресурсные квоты.
+
+- **Source:** точные байты, принятые в карантин; напрямую клиентам не выдаются.
+- **Job:** одноразовая операция со случайным ID, владельцем, разрешённым типом и коротким TTL.
+- **Worker:** отдельный непривилегированный процесс/контейнер, не API и недоступный извне.
+- **Result:** заново декодированный/перекодированный и повторно проверенный файл; исходные байты не копируются в каталог выдачи.
+
+Произвольные архивы, SVG/HTML, документы, исполняемые файлы, пользовательские скрипты, публичные анонимные загрузки, генерация изображений и постоянный сетевой доступ worker не входят в scope без отдельного решения.
+
+### Предлагаемая машина состояний
+
+~~~mermaid
+stateDiagram-v2
+    [*] --> created
+    created --> receiving
+    receiving --> quarantined
+    quarantined --> processing
+    processing --> published
+    processing --> rejected
+    created --> expired
+    receiving --> rejected
+    quarantined --> expired
+    processing --> cleanup_failed
+    published --> [*]
+    rejected --> [*]
+    expired --> [*]
+~~~
+
+Переходы должны быть атомарными и монотонными. Один upload intent нельзя потребить, обработать или опубликовать повторно.
+
+### Целевой процесс обработки
+
+1. Администратор создаёт короткоживущий одноразовый upload intent с разрешённой категорией, типом и размером.
+2. Принимающий endpoint ограничивает фактически прочитанные потоковые байты, размер запроса и rate. Одному Content-Length доверять нельзя. Байты попадают в случайный карантинный каталог с закрытыми правами.
+3. До постановки в очередь проверяются одноразовость intent, quota, сигнатура файла и ожидаемый тип. Архивы, polyglot и неподдерживаемые форматы отклоняются; расширение и MIME клиента не доказывают формат.
+4. Очередь передаёт worker только job ID и фиксированный processing profile.
+5. Контроллер запускает отдельную среду на одну job: non-root, read-only root filesystem, capabilities отключены, no-new-privileges, без сети, host PID/IPC, Docker socket, с лимитами CPU/RAM/PIDs/time и ограниченным scratch storage.
+6. Изображения декодируются и перекодируются в raster allowlist с лимитами пикселей/кадров/размеров/времени; чувствительные метаданные удаляются. Audio декодируется с ограничениями длительности, каналов, sample rate, размера и времени. Результат создаётся заново.
+7. Проверяются signature, size, hash, category, разрешённое расширение и отсутствие лишних файлов; затем результат атомарно публикуется.
+8. Независимая cleanup-задача удаляет source и scratch после успеха, ошибки или TTL. После рестартов сверяются orphan jobs; сбой очистки вызывает alert.
+
+### Хранение, квоты и угрозы
+
+Карантин и scratch должны находиться вне web root и опубликованного каталога. Пути генерирует сервер; нельзя строить их из пользовательских имён файлов. Ограничиваются размер одного файла, quota пользователя/администратора, общий объём, очередь и concurrency. Cleanup должен быть идемпотентным и удалять только объекты под выделенным корнем.
 
 | Угроза | Обязательный контроль |
 | --- | --- |
-| Путь traversal / symlink | Серверные UUID-пути, `openat`/эквивалент с проверкой корня, запрет ссылок |
-| Огромный файл / decompression bomb | Поточные лимиты байтов, пикселей/кадров/длительности, CPU/RAM/time quotas |
-| Подмена расширения/MIME | Проверка сигнатуры, реальное декодирование, безопасное перекодирование |
-| Уязвимость decoder | Worker на job без сети/capabilities, read-only root, быстрое обновление образов |
-| Повторная отправка / race | Одноразовые intent, атомарные переходы состояния, idempotency |
-| Утечка карантина | Отдельная сеть и volume, отсутствие API выдачи, минимальные права |
-| Исчерпание диска/очереди | Квоты, backpressure, TTL, алерты, отказ до приёма сверх лимита |
-| Остаточные временные файлы | Cleanup при всех исходах, TTL sweeper, orphan reconciliation и тесты |
-| Компрометация worker | Одноразовая среда, нет секрета приложения/DB, нет сети/socket/host mounts |
-| Злоупотребление лицензией/контентом | Админ-подтверждение прав, политика удаления и audit решения |
+| Path traversal / symlink | Server UUID paths, операции с проверкой корня и запрет ссылок |
+| Большой файл / decompression bomb | Поточные лимиты байтов, пикселей/кадров/длительности и CPU/RAM/time quotas |
+| Подмена MIME/extension | Проверка сигнатуры, реальный decoder и безопасное перекодирование |
+| Эксплойт decoder | Worker на одну job без сети/capabilities и секретов приложения |
+| Replay/race | Одноразовый intent, атомарные состояния и idempotency |
+| Утечка карантина | Отдельные volume/network, отсутствие endpoint выдачи, least privilege |
+| Исчерпание диска/очереди | Quotas, backpressure, TTL и alerting |
+| Orphan temporary files | Cleanup при всех исходах, TTL sweeper и reconciliation |
+| Copyright abuse | Подтверждение прав администратором, политика удаления и audit-решение |
 
-## 7. Проверки и критерии приёмки
+### API и критерии приёмки
 
-Реализация не считается готовой, пока все условия ниже не подтверждены
-автоматическими тестами и эксплуатационным тестированием:
+Все endpoints управления требуют активную admin-сессию. Intent связывается с категорией, типом, максимальным размером, TTL и лимитами на администратора/IP. Ответы не должны раскрывать внутренние пути, временные имена, stderr или детали scanner. Методы API/status codes, pagination каталога, удаление, signed URL policy, storage provider, queue, sandbox runtime, модерация, медиа-профили и юридический процесс утверждаются через ADR до реализации.
 
-1. Нельзя создать или использовать upload intent без активной admin-сессии;
-   истёкший и повторно использованный intent не принимает байты.
-2. Размер ограничен фактически принятым потоком, даже при отсутствующем или
-   ложном `Content-Length`; превышение завершается без публикации.
-3. Traversal, абсолютные пути, symlink, двойные расширения, неверный magic
-   number, polyglot, повреждённые изображения/аудио, архивы и недопустимые
-   медиа-лимиты отклоняются.
-4. Worker запускается non-root с проверяемыми ограничениями; доступ к сети,
-   Docker socket, host mounts и секретам backend отсутствует.
-5. Изображения выходят только в разрешённом растровом формате с удалёнными
-   метаданными; audio соответствует зафиксированному профилю.
-6. Ошибка, timeout, crash, отмена, перезапуск API/worker и полный диск не
-   публикуют исходник и запускают cleanup/reconciliation.
-7. Повторный cleanup безопасен; временные данные удаляются в заданный TTL,
-   orphan и cleanup failure наблюдаемы.
-8. Параллельные jobs не читают и не удаляют данные друг друга; квоты
-   применяются атомарно.
-9. Только опубликованные результаты видны в защищённом каталоге API; ответы
-   имеют безопасные MIME, `nosniff`, корректную авторизацию и cache policy.
-10. Логи, audit, трассы, метрики, ошибки и URL не содержат исходный контент,
-    токены, пароли или внутренние пути.
-11. Обновлены threat model, API docs, эксплуатационный runbook, Compose/
-    orchestrator policy, backup/retention и инцидентные процедуры.
-
-## 8. Решения до начала разработки
-
-- Выбрать поддерживаемые image/audio профили, лицензии и владельца модерации.
-- Утвердить максимальный размер, длительность/разрешение, суммарные квоты,
-  concurrency и TTL по реальным ресурсам.
-- Выбрать очередь и жизненный цикл статуса импорта; определить поведение при
-  недоступном worker.
-- Выбрать sandbox/runtime и проверить его на целевой платформе. Docker socket
-  никогда не должен становиться доступен API; если для запуска jobs нужен
-  контроллер с повышенными правами, он выделяется отдельно и принимает только
-  строго типизированные job IDs.
-- Утвердить способ отдачи результата, удаление опубликованного медиа,
-  авторизацию URL, аудит и обязательства по copyright.
+Автоматические и эксплуатационные тесты должны подтвердить: unauthenticated/expired/replayed intents не принимают байты; streaming limits работают при отсутствующем или ложном Content-Length; traversal, symlink, двойные расширения, invalid signatures, polyglots, повреждённые файлы и неподдерживаемые форматы отклоняются; worker не имеет сети/socket/host mounts/backend secrets; output безопасен, метаданные удалены; failures/timeouts/crashes/restarts/disk-full не публикуют source bytes; cleanup повторяем и ограничен TTL; jobs изолированы друг от друга; выдаются только проверенные результаты; logs/audit/traces/metrics/URLs не содержат содержимого файлов, секретов или внутренних путей.

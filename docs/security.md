@@ -1,5 +1,9 @@
 # Security architecture and operations
 
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+
+<a id="english"></a>
+
 ## Status and scope
 
 This document describes the controls implemented in this repository and the
@@ -222,6 +226,7 @@ provisioning commands at production or third-party systems.
 
 ---
 
+<a id="russian"></a>
 # Модель безопасности и эксплуатация
 
 ## Статус и область действия

@@ -1,118 +1,132 @@
-# Нагрузочное тестирование / Load testing
+# Performance and safe load testing
 
-## Безопасность запуска / Safe execution
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** a guarded local Locust suite exists; no production benchmark or capacity claim is published.
 
-The Locust suite in `tests/performance/locustfile.py` is intentionally restricted
-to `localhost` and loopback IP addresses. It rejects hostnames on other
-interfaces and enforces hard caps of 250 virtual users and 15 minutes. Do not
-remove those safeguards or point the suite at production or third-party hosts.
+<a id="english"></a>
+## English
 
-Набор Locust в `tests/performance/locustfile.py` допускает только `localhost`
-и loopback IP. Другие адреса блокируются; жёсткие ограничения — 250
-виртуальных пользователей и 15 минут. Не отключайте ограничения и не
-направляйте тест на production или сторонние системы.
+### Safety boundary
 
-The workload is authenticated and the service rejects cleartext HTTP. Start
-the local stack after creating the self-signed development certificate:
+The Locust suite in <code>tests/performance/locustfile.py</code> is intentionally restricted to <code>localhost</code> and loopback IP addresses. It rejects non-loopback targets and enforces hard caps of 250 virtual users and 15 minutes. Keep these safeguards. Do not point the suite at production, a third-party host or a shared database.
 
-```sh
+The suite requires authenticated access and a disposable database whose name ends in <code>_test</code>. It uses the local development certificate. Do not weaken TLS checks or change the test target guard to obtain a larger number.
+
+### Prepare the local environment
+
+~~~sh
 cp -n .env.example .env
+# Set unique local POSTGRES_PASSWORD and REDIS_PASSWORD values.
 make dev-certs
 make up
-token="$(docker compose exec -T -e APP_ENV=test app python -m scripts.provision_perf_admin)"
-PERF_AUTH_TOKEN="$token" make perf-smoke
-```
+docker compose exec app python -m app.auth.cli bootstrap-admin
+~~~
 
-The one-time provisioning command refuses to run unless `APP_ENV=test` and
-the database name ends in `_test`. It creates a random temporary password
-in-process and prints only the short-lived bearer token. Keep the token in
-memory/environment only; do not paste it into source files, command arguments,
-logs, or reports. Repeat provisioning on a freshly created test database.
+Create a performance-only administrator and configure the expected local test credentials. The test helper uses <code>PERF_AUTH_TOKEN</code>; never reuse a production token. Run tests only after verifying that the host is loopback and the selected database is disposable.
 
-Запускайте только локальный Compose-стек после создания self-signed
-сертификата разработки. Нагрузочный токен обязателен:
+### Run the smoke profile
 
-```sh
+~~~sh
+make perf-smoke
+~~~
+
+The smoke profile runs a small local workload and writes HTML/CSV reports under <code>reports/</code>. It is intended to catch gross regressions and broken test wiring, not to establish capacity.
+
+### Run a bounded local profile
+
+~~~sh
+PERF_USERS=100 PERF_SPAWN_RATE=10 PERF_RUN_TIME=5m make perf
+~~~
+
+The command-line values are configurable, but test code still enforces the hard limits. Store the output with the tested commit and environment details. Do not commit reports containing tokens, emails or other sensitive test data.
+
+### Workload and interpretation
+
+The suite exercises authenticated service workflows defined in the Locust task set. Interpret the result alongside:
+
+- request count and endpoint mix;
+- success and error counts, including timeouts;
+- p50, p95 and p99 latency per endpoint;
+- throughput and virtual-user count;
+- CPU, memory and container limits;
+- PostgreSQL connection-pool pressure and query time;
+- Redis latency, memory pressure and availability.
+
+A single average latency is insufficient. A high request rate with elevated errors is not a successful result. Change one variable at a time and repeat the same profile.
+
+### Diagnosing a slow run
+
+1. Compare endpoint percentiles and error counts in HTML/CSV reports.
+2. Correlate the slow path with JSON request logs and optional OpenTelemetry traces.
+3. Check database CPU, connections, slow queries and pool saturation.
+4. Check Redis latency and memory limits.
+5. Repeat the same workload after changing one parameter.
+
+### Reporting a benchmark
+
+Record commit SHA, date, OS/hardware, container limits, dependency versions, database state, endpoint mix, payload, virtual users, spawn rate, duration, warm-up, percentiles, throughput and errors. A result without its workload and environment is not a reproducible benchmark. See [metrics.md](metrics.md) for definitions and publication rules.
+
+---
+
+<a id="russian"></a>
+## Русский
+
+### Ограничения безопасности
+
+Набор Locust в <code>tests/performance/locustfile.py</code> намеренно ограничен адресами <code>localhost</code> и loopback IP. Внешние цели отклоняются; жёсткие пределы — 250 виртуальных пользователей и 15 минут. Сохраняйте эти safeguards. Не направляйте набор на production, сторонние host или общую базу данных.
+
+Набору требуются аутентифицированный доступ и отдельная одноразовая БД, имя которой заканчивается на <code>_test</code>. Используется локальный development certificate. Не ослабляйте TLS-проверки и target guard ради большего числа.
+
+### Подготовка окружения
+
+~~~sh
+cp -n .env.example .env
+# Установите уникальные локальные значения POSTGRES_PASSWORD и REDIS_PASSWORD.
 make dev-certs
 make up
-token="$(docker compose exec -T -e APP_ENV=test app python -m scripts.provision_perf_admin)"
-PERF_AUTH_TOKEN="$token" make perf-smoke
-```
+docker compose exec app python -m app.auth.cli bootstrap-admin
+~~~
 
-Provisioning откажется работать, если `APP_ENV` не равен `test` или имя базы
-не заканчивается на `_test`. Случайный временный пароль создаётся только в
-процессе, команда выводит только короткоживущий bearer-токен. Не записывайте
-токен в исходники, аргументы процесса, логи или отчёты.
+Создайте отдельного администратора для performance-тестов и задайте локальные тестовые credentials. Test helper использует <code>PERF_AUTH_TOKEN</code>; не переиспользуйте production-токен. Запускайте тесты только после проверки loopback host и disposable database.
 
-The smoke profile uses 5 users for 30 seconds. The default load profile uses
-100 users, ramps at 10 users/second, and runs for 5 minutes. Values can be
-reduced or increased within the enforced safety caps:
+### Smoke-профиль
 
-```sh
-PERF_AUTH_TOKEN="$token" make perf PERF_USERS=150 PERF_SPAWN_RATE=15 PERF_RUN_TIME=8m
-```
+~~~sh
+make perf-smoke
+~~~
 
-Session TTL по умолчанию 15 минут; при более длинном прогоне создайте новый
-токен или увеличьте `AUTH_SESSION_TTL_SECONDS` в пределах установленного
-максимума до 3600 секунд.
+Smoke-профиль создаёт небольшую локальную нагрузку и сохраняет HTML/CSV отчёты в <code>reports/</code>. Его задача — найти грубые регрессии и сломанную тестовую конфигурацию, а не определить capacity.
 
-Smoke-профиль: 5 пользователей, 30 секунд. Профиль нагрузки по умолчанию:
-100 пользователей, запуск по 10 пользователей/секунду, 5 минут. Параметры
-можно менять в пределах ограничений:
+### Ограниченный локальный профиль
 
-```sh
-make perf PERF_USERS=150 PERF_SPAWN_RATE=15 PERF_RUN_TIME=8m
-```
+~~~sh
+PERF_USERS=100 PERF_SPAWN_RATE=10 PERF_RUN_TIME=5m make perf
+~~~
 
-## Сценарии / Scenarios
+Значения команды можно менять, но код теста всё равно проверяет жёсткие ограничения. Сохраняйте отчёт вместе с commit и параметрами окружения. Не коммитьте отчёты, содержащие токены, email и другие чувствительные тестовые данные.
 
-- User create/read/update/delete lifecycle.
-- Profile creation is deliberately independent of credential and role
-  provisioning; each lifecycle user is isolated by a generated email.
-- List pagination at first page, max page size, large offset, and invalid
-  boundaries.
-- Missing and malformed UUIDs.
-- Invalid payloads: malformed email, missing fields, unknown fields, blank and
-  overlong names.
-- Duplicate-email requests that contend on a shared unique key.
-- Minimum and maximum accepted name lengths.
+### Нагрузка и интерпретация
 
-Сценарии включают полный CRUD lifecycle, создание профиля без credentials или
-роли, границы пагинации, отсутствующие и некорректные UUID, невалидные
-payloads, конкурентные запросы с одинаковым email и граничные длины имени.
+Набор выполняет аутентифицированные сценарии, определённые в Locust task set. Результат нужно оценивать вместе с:
 
-## Метрики и интерпретация / Metrics and interpretation
+- числом запросов и распределением по endpoint;
+- количеством успехов и ошибок, включая timeout;
+- p50, p95 и p99 latency для каждого endpoint;
+- throughput и числом виртуальных пользователей;
+- CPU, памятью и лимитами контейнеров;
+- давлением на PostgreSQL connection pool и временем запросов;
+- latency, памятью и доступностью Redis.
 
-Locust reports request count, failures, average and median duration, p95/p99,
-maximum response time, and requests/second overall and per endpoint. Each run
-writes an HTML report, CSV statistics, and `reports/load-summary.json`.
-Reports are local artifacts and are excluded from Git.
+Одного среднего времени ответа недостаточно. Высокий RPS при увеличении ошибок не является успешным результатом. Меняйте по одному параметру и повторяйте тот же профиль.
 
-Отчёты Locust содержат число запросов и ошибок, среднее и медианное время,
-p95/p99, максимум и запросы/секунду в целом и по endpoints. `make perf`
-создаёт HTML, CSV и `reports/load-summary.json`. Эти локальные отчёты
-исключены из Git.
+### Разбор медленного запуска
 
-No latency or throughput SLA has been measured or approved. Compare runs only
-when the application commit, database, hardware, and test profile are recorded.
-Run multiple times and treat a local result as a baseline, not a production
-capacity guarantee. The duplicate-email contention scenario can leave at most
-one test user in the database; use a disposable database.
+1. Сравните перцентили и ошибки по endpoint в HTML/CSV отчётах.
+2. Сопоставьте медленный path с JSON request logs и опциональными OpenTelemetry traces.
+3. Проверьте CPU БД, соединения, медленные запросы и заполнение pool.
+4. Проверьте latency Redis и лимиты памяти.
+5. Повторите тот же workload после изменения одного параметра.
 
-SLA по задержкам или пропускной способности не измерялся и не согласовывался.
-Сравнивайте прогоны только при зафиксированных commit, базе, оборудовании и
-профиле нагрузки. Повторяйте замеры; локальный результат — baseline, а не
-гарантия production capacity. Сценарий конкурентного email может оставить в
-БД одного тестового пользователя — используйте disposable database.
+### Публикация benchmark
 
-## Diagnosing a slow run / Разбор медленного прогона
-
-1. Compare endpoint percentiles and error counts in the HTML/JSON reports.
-2. Correlate with JSON request logs and optional OpenTelemetry traces.
-3. Check database CPU, connections, slow queries, and pool saturation.
-4. Change one variable at a time and rerun the same profile.
-
-1. Сравните percentiles и ошибки по endpoint в HTML/JSON.
-2. Сопоставьте их с JSON-логами и, если включено, OpenTelemetry traces.
-3. Проверьте CPU БД, соединения, медленные запросы и заполнение пула.
-4. Меняйте по одному параметру и повторяйте одинаковый профиль.
+Укажите commit SHA, дату, ОС/оборудование, лимиты контейнеров, версии зависимостей, состояние БД, набор endpoint, payload, число виртуальных пользователей, spawn rate, длительность, warm-up, перцентили, throughput и ошибки. Результат без workload и описания окружения не является воспроизводимым benchmark. Определения и правила публикации описаны в [metrics.md](metrics.md).

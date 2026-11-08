@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="600" viewBox="0 0 1400 600" role="img" aria-labelledby="title desc">
+<title id="title">User Service architecture</title>
+<desc id="desc">An administrator browser connects over HTTPS to Nginx ingress, which forwards to a FastAPI application. The application connects to PostgreSQL, Redis and a read-only media catalog, and can optionally export traces to an OpenTelemetry collector.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#101b34"/><stop offset="1" stop-color="#1a2c50"/></linearGradient>
+  <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#67d5cc"/><stop offset="1" stop-color="#8eabff"/></linearGradient>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#020817" flood-opacity=".28"/></filter>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#91a9d4"/></marker>
+  <style>
+    .heading{font:700 34px Inter,Segoe UI,Arial,sans-serif;fill:#f7f9ff}
+    .sub{font:400 16px Inter,Segoe UI,Arial,sans-serif;fill:#aebfdd}
+    .label{font:700 19px Inter,Segoe UI,Arial,sans-serif;fill:#f5f7ff}
+    .detail{font:400 14px Inter,Segoe UI,Arial,sans-serif;fill:#b6c5df}
+    .micro{font:600 12px Inter,Segoe UI,Arial,sans-serif;fill:#85dcd3;letter-spacing:1.3px}
+    .node{fill:#24385c;stroke:#49618d;stroke-width:1.5}
+    .line{stroke:#91a9d4;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    .dashed{stroke:#8eabff;stroke-width:2.5;stroke-dasharray:8 8;fill:none;marker-end:url(#arrow)}
+  </style>
+</defs>
+<rect width="1400" height="600" rx="28" fill="url(#bg)"/>
+<circle cx="1240" cy="50" r="180" fill="#455e9b" opacity=".12"/>
+<circle cx="80" cy="580" r="220" fill="#46c4ba" opacity=".08"/>
+<text x="64" y="72" class="micro">PROJECT MAP / CURRENT IMPLEMENTATION</text>
+<text x="64" y="120" class="heading">User Service</text>
+<text x="64" y="151" class="sub">Admin-only profiles · explicit boundaries · observable request flow</text>
+<g filter="url(#shadow)">
+  <rect class="node" x="62" y="234" width="220" height="154" rx="18"/>
+  <rect x="62" y="234" width="220" height="7" rx="4" fill="url(#accent)"/>
+  <text x="88" y="279" class="micro">CLIENT</text><text x="88" y="317" class="label">Admin browser</text>
+  <text x="88" y="346" class="detail">TypeScript console</text><text x="88" y="369" class="detail">Bearer token in tab memory</text>
+  <rect class="node" x="370" y="234" width="220" height="154" rx="18"/>
+  <rect x="370" y="234" width="220" height="7" rx="4" fill="#8eabff"/>
+  <text x="396" y="279" class="micro">INGRESS</text><text x="396" y="317" class="label">Nginx</text>
+  <text x="396" y="346" class="detail">TLS termination</text><text x="396" y="369" class="detail">Loopback-published port</text>
+  <rect class="node" x="680" y="212" width="300" height="198" rx="18"/>
+  <rect x="680" y="212" width="300" height="7" rx="4" fill="url(#accent)"/>
+  <text x="708" y="260" class="micro">APPLICATION</text><text x="708" y="301" class="label">Hypercorn + FastAPI</text>
+  <text x="708" y="335" class="detail">Auth · profiles · media · health</text>
+  <text x="708" y="359" class="detail">Services · repositories · validation</text>
+  <text x="708" y="383" class="detail">JSON request logs · optional traces</text>
+  <rect class="node" x="1090" y="174" width="240" height="128" rx="18"/>
+  <rect x="1090" y="174" width="240" height="7" rx="4" fill="#67d5cc"/>
+  <text x="1116" y="216" class="micro">PERSISTENCE</text><text x="1116" y="253" class="label">PostgreSQL 16</text>
+  <text x="1116" y="278" class="detail">Profiles · credentials · roles</text>
+  <rect class="node" x="1090" y="334" width="240" height="116" rx="18"/>
+  <rect x="1090" y="334" width="240" height="7" rx="4" fill="#8eabff"/>
+  <text x="1116" y="376" class="micro">EPHEMERAL STATE</text><text x="1116" y="411" class="label">Redis 7</text>
+  <text x="1116" y="433" class="detail">Sessions · rate counters</text>
+  <rect class="node" x="680" y="472" width="300" height="88" rx="16"/>
+  <text x="706" y="507" class="micro">READ-ONLY ASSETS</text><text x="706" y="537" class="label">Curated media catalog</text>
+  <rect class="node" x="370" y="472" width="220" height="88" rx="16"/>
+  <text x="393" y="507" class="micro">OPTIONAL TELEMETRY</text><text x="393" y="537" class="label">OTel Collector</text>
+</g>
+<path class="line" d="M282 310H360"/><text x="294" y="294" class="micro">HTTPS</text>
+<path class="line" d="M590 310H670"/><text x="598" y="294" class="micro">PRIVATE HTTP</text>
+<path class="line" d="M980 266H1080"/><path class="line" d="M980 357H1080"/>
+<path class="line" d="M830 410V462"/><path class="dashed" d="M680 383H630V516H600"/>
+<text x="64" y="525" class="sub">Development topology shown. Production needs a separately reviewed network, TLS, secrets, backup and recovery design.</text>
+</svg>

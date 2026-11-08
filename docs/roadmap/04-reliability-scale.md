@@ -1,161 +1,106 @@
-# 04. Надёжность, производительность и масштабирование
+# PLAN-04: Reliability, performance and scale
 
-> **Статус:** будущее условное ТЗ (`PLAN-04`). Численные latency/throughput
-> SLA не утверждены и не измерены как production baseline. Все нагрузочные
-> испытания должны сохранять ограничения [docs/performance.md](../performance.md):
-> только localhost/loopback и disposable test database.
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** conditional future specification. Numeric latency/throughput SLOs are not approved; no production benchmark baseline exists.
 
-## 1. Цель
+<a id="english"></a>
+## English
 
-Получить измеримую картину поведения API и устранить конкретные ограничения
-при согласованных требованиях к нагрузке и доступности. Не добавлять
-кэширование, очередь, read replica, новый database или service decomposition
-без доказанного случая и оценки новых режимов отказа.
+### Goal
 
-## 2. Исходная линия и профиль нагрузки
+Measure the API under an agreed workload and remove demonstrated bottlenecks. Do not add caching, queues, read replicas, new databases or service decomposition without evidence, an operational owner and a failure model. Existing load tests must remain loopback-only and use a disposable database whose name ends in _test.
 
-До выбора оптимизации зафиксировать:
+### Establish a reproducible baseline
 
-- commit/image, Python и dependency versions;
-- конфигурацию API, PostgreSQL, Redis, connection pools и TLS;
-- CPU/memory, тип диска, версии и параметры БД, сеть и расположение
-  компонентов;
-- размер таблиц, распределение длины списка, частоту CRUD и конкурентность;
-- количество запросов, отказов, p50/p95/p99/max и throughput по маршрутам;
-- прогрев/холодный запуск, длительность теста, seed data, cleanup и повтор;
-- конкуренцию за email/одну запись, read/write mix и auth/rate-limit mix.
+Record commit/image, Python and dependency versions, API/DB/Redis configuration, pool sizes, TLS settings, CPU/RAM/disk/network, database size and row distribution, endpoint mix, read/write/auth mix, payloads, concurrency, warm-up, duration, errors, p50/p95/p99/max and throughput. Repeat runs and report spread; do not select only the best result. Use synthetic data and keep personal data/tokens out of reports.
 
-Локальный прогон не является прогнозом production capacity. Использовать
-только искусственные данные и новый одноразовый `_test` database; не
-сохранять персональные данные или токены в отчётах. Повторять профиль
-несколько раз и указывать разброс, а не выбирать лучший прогон.
+A local benchmark is not a forecast of production capacity.
 
-## 3. Порядок принятия решений
+### Decision process
 
-1. Определить пользовательские SLI и коммерчески значимые сценарии.
-2. Снять baseline и проверить, что узкое место воспроизводится.
-3. Сформулировать гипотезу с измеримым улучшением и риск-регрессией.
-4. Изменить одну категорию причин за раз: SQL/index/pagination, pool/timeout,
-   CPU/serialization или внешнюю зависимость.
-5. Повторить идентичный безопасный профиль и compare endpoint-level
-   percentiles, error rate, resource saturation и стоимость.
-6. Добавлять кэш/очередь/новую инфраструктуру только когда более простая
-   оптимизация исчерпана, а требования гарантии доставки/свежести/стоимости
-   записаны.
+1. Identify user-visible SLI and business-critical workflows.
+2. Capture a baseline and reproduce the bottleneck.
+3. Form a hypothesis with measurable expected improvement and regression risk.
+4. Change one cause category at a time: SQL/index/pagination, connection pool/timeouts, CPU/serialization or dependency behaviour.
+5. Repeat the same profile and compare endpoint percentiles, error rate, throughput, resource saturation and cost.
+6. Add cache, queue or infrastructure only after simpler options are exhausted and freshness/delivery/cost requirements are documented.
 
-### Кандидаты, которые требуют измерения
+### Candidates requiring evidence
 
-- Текущая offset pagination: оценить при больших offsets; keyset pagination
-  может изменить контракт, сортировку и навигацию, поэтому не включать
-  автоматически.
-- PostgreSQL queries и индексы: добавить индекс только с планом выполнения,
-  селективностью и анализом write/storage cost.
-- Размер/тайм-ауты DB pool: корректировать совместно с лимитами соединений
-  всей системы, не только одного процесса.
-- Redis outage/latency: проверить отказные режимы сессий и login throttling;
-  не ослаблять безопасность fallback-режимом в память.
-- Сериализация и валидация: менять только после профилирования CPU и
-  сохранения contract behavior.
-- Логи/traces: держать под контролем cardinality и цену; не снижать защиту
-  PII ради удобства диагностики.
-
-## 4. Нефункциональные требования
-
-Числа должны быть согласованы владельцем продукта после baseline:
-
-| Показатель | Как задать после измерения |
+| Candidate | What to measure first |
 | --- | --- |
-| Availability/SLO | Определить целевое действие, окно, допустимые исключения и источник измерения |
-| Latency | Указать p95/p99, endpoint class, warm/cold и внешний/внутренний замер |
-| Error budget | Классифицировать ожидаемые `4xx`, системные `5xx` и недоступность зависимостей |
-| Capacity | Указать конкурентные запросы, read/write mix, размер данных и запас |
-| RPO/RTO | Согласовать с восстановлением PostgreSQL и влиянием Redis-сброса сессий |
-| Resource limits | CPU/memory/connections/disk/queue depth для каждой среды |
-| Scalability | Определить допустимый рост и момент пересмотра архитектуры |
+| Offset pagination | Query plans and response time at large offsets; keyset changes API semantics |
+| PostgreSQL indexes | Selectivity, execution plans, write overhead and storage cost |
+| DB pool | Aggregate connections across processes/replicas and wait time |
+| Redis outage/latency | Session and throttling failure behaviour; no permissive in-memory auth fallback |
+| Serialization/validation | CPU profile and unchanged API contract |
+| Logs/traces | Cardinality and cost without exposing personal data |
 
-Не переносить локальные числа в договор/публичное SLA без production-like
-проверки и согласования.
+### Non-functional objectives and resilience
 
-## 5. Надёжность API и зависимостей
+Numeric values require owner approval after baseline. Define availability window/exclusions, endpoint latency percentiles, error budget, throughput demand, resource ceilings, backup/restore expectations and recovery. Do not invent target values.
 
-При будущем масштабировании проверить и документировать:
+In dedicated test/staging, simulate PostgreSQL outage/latency, Redis outage, pool exhaustion, collector failure, slow startup/shutdown and migration failure. Confirm access is denied safely, no misleading success is returned, and recovery works after dependencies return. Fault injection must not target production or third parties without explicit authorization.
 
-- максимальный размер запроса/страницы, таймауты и лимиты конкуренции;
-- graceful shutdown: прекращение приёма новых запросов, завершение текущих,
-  закрытие SQLAlchemy/Redis/telemetry ресурсов;
-- поведение при потере PostgreSQL/Redis и восстановлении соединения;
-- границы retry: не повторять неидемпотентную mutation без безопасного
-  idempotency contract;
-- конкурирующие mutation, unique constraints и транзакционные инварианты;
-- versioned API и контрактную обратную совместимость;
-- корректность health/readiness при startup, миграции и деградации зависимости;
-- контроль ресурсов при большой странице, ошибочном input и всплеске
-  login attempts.
-
-### Идемпотентность и события
-
-`Idempotency-Key` и transactional outbox нужны только при конкретном сценарии
-повторного создания после сетевой ошибки либо гарантированной публикации
-событий. До реализации определить scope ключа, storage, TTL, повторные body,
-конкурентное поведение, результат replay, privacy, cleanup и границы
-транзакции. Не вводить broker/at-least-once delivery без consumer idempotency
-и мониторинга backlog.
-
-## 6. Тестирование и эксплуатационные доказательства
-
-### Performance
-
-- Расширять существующие безопасные сценарии только локально; сохранить
-  жёсткие caps и проверку host.
-- Разделить smoke gate и длительный benchmark; стабильный CI smoke не
-  объявлять performance SLA.
-- Автоматически проверять полноту отчёта, отсутствие token/email/PII и
-  корректное значение метрик при нулевых запросах/ошибках.
-- При сравнении хранить profile metadata и commit, не коммитить тяжёлые
-  локальные отчёты и не записывать секреты в shell history/CI artifact.
-- Проверять failure mode/soak только на специально созданном локальном или
-  staging окружении с явным разрешением; не направлять нагрузку на
-  production/третьи системы.
-
-### Resilience
-
-Для staging/test окружения определить контролируемые сценарии: PostgreSQL
-недоступен/медленный, Redis недоступен, connection pool exhausted, collector
-не отвечает, долгий startup/shutdown, ошибочная миграция. Проверять, что
-сервис не выдаёт success-shaped ответы, не открывает доступ и возвращается
-в норму после восстановления. Fault injection ограничить безопасной средой.
-
-## 7. Этапы
-
-| Подэтап | Работа | Exit criteria |
+| Stage | Work | Exit evidence |
 | --- | --- | --- |
-| `04-A` Baseline | Зафиксировать профиль и повторяемые результаты | Полные metadata и несколько сопоставимых запусков |
-| `04-B` SLO | Согласовать SLI/SLO, error budget и данные для алертов | Владелец утверждает измерения и границы |
-| `04-C` Bottleneck | Проверить гипотезу профилировщиком/SQL plan/ресурсами | Причина воспроизводима, выбран smallest effective change |
-| `04-D` Improvement | Реализовать узкую оптимизацию с regression tests | Улучшение измеримо, контракт/безопасность не ухудшены |
-| `04-E` Resilience | Проверить отказ/восстановление и runbook | Результат деградации предсказуем и безопасен |
-| `04-F` Capacity review | Сопоставить результаты с требованиями и стоимостью | Зафиксировано решение: достаточно / нужна следующая оптимизация |
+| 04-A Baseline | Capture repeatable profile | Metadata and comparable runs |
+| 04-B SLO | Approve SLI/SLO and error budget | Owner-approved objectives |
+| 04-C Bottleneck | Reproduce with profiler/query plan | Root cause verified |
+| 04-D Improvement | Implement smallest effective change | Measured improvement and regression tests |
+| 04-E Resilience | Test failures and recovery | Safe failure behaviour and runbook |
+| 04-F Capacity review | Compare results with demand/cost | Documented capacity decision |
 
-## 8. Критерии приёмки
+Acceptance requires repeatable safe tests, approved objectives, like-for-like comparison, latency/errors/throughput/resources review, bounded retry/cache/queue states, fail-closed behaviour and a capacity runbook that does not promise unlimited growth.
 
-- Тесты повторяемы и выполняются только на разрешённых целях/данных.
-- Есть согласованный SLO и метод измерения; до утверждения нет заявления о
-  гарантированных latency или throughput.
-- Изменение оптимизации сравнивается с baseline на одинаковом профиле.
-- Результат оценивается по latency, ошибкам, throughput и ресурсам, а не по
-  одному среднему времени.
-- Все добавленные retry/cache/queue состояния имеют timeout, limit,
-  monitoring и failure behavior.
-- Безопасность при недоступности зависимостей остаётся deny-by-default.
-- API/data/auth инварианты покрыты regression tests и contract docs.
-- Capacity/runbook описывает trigger повторного review, а не обещает
-  неограниченный рост.
+---
 
-## English summary
+<a id="russian"></a>
+## Русский
 
-`PLAN-04` calls for measured, repeatable performance and resilience work—not
-premature infrastructure. First establish a safe loopback-only baseline and
-agree SLOs; then investigate a reproducible bottleneck, make the smallest
-effective change, and rerun the same profile. Numeric targets remain unset
-until approved. Caching, queues, idempotency, and horizontal scaling require
-explicit use cases and documented failure behavior.
+### Цель
+
+Измерить поведение API при согласованной нагрузке и устранить подтверждённые узкие места. Не добавлять cache, queue, read replicas, новые БД или разделение на сервисы без evidence, владельца эксплуатации и модели отказов. Все load tests должны оставаться loopback-only и использовать отдельную одноразовую БД, имя которой заканчивается на _test.
+
+### Воспроизводимый baseline
+
+Зафиксировать commit/image, версии Python и зависимостей, настройки API/БД/Redis, pool sizes, TLS, CPU/RAM/disk/network, размер и распределение строк БД, endpoint mix, read/write/auth mix, payload, concurrency, warm-up, длительность, ошибки, p50/p95/p99/max и throughput. Повторять запуск и указывать разброс; нельзя выбирать только лучший результат. Использовать synthetic data, не помещать персональные данные и токены в отчёты.
+
+Локальный benchmark не является прогнозом production capacity.
+
+### Порядок решений
+
+1. Определить пользовательские SLI и критичные бизнес-сценарии.
+2. Снять baseline и воспроизвести узкое место.
+3. Сформулировать гипотезу с измеримым улучшением и риском регрессии.
+4. Менять по одной категории причин: SQL/index/pagination, DB pool/timeouts, CPU/serialization или поведение зависимости.
+5. Повторить тот же профиль и сравнить endpoint percentiles, error rate, throughput, насыщение ресурсов и стоимость.
+6. Добавлять cache, queue или инфраструктуру только после исчерпания простых решений и документирования требований свежести/доставки/стоимости.
+
+### Кандидаты, требующие evidence
+
+| Кандидат | Что измерить сначала |
+| --- | --- |
+| Offset pagination | Query plans и response time на больших offsets; keyset меняет семантику API |
+| PostgreSQL indexes | Selectivity, execution plans, стоимость записи и хранения |
+| DB pool | Совокупное число соединений всех процессов/реплик и wait time |
+| Redis outage/latency | Поведение сессий и throttling; permissive in-memory auth fallback запрещён |
+| Serialization/validation | CPU profile при неизменном API-контракте |
+| Logs/traces | Cardinality и стоимость без раскрытия персональных данных |
+
+### Нефункциональные цели и resilience
+
+Числа утверждаются владельцем только после baseline. Нужно определить окно availability и исключения, endpoint latency percentiles, error budget, throughput demand, лимиты ресурсов, backup/restore и recovery. Не выдумывать целевые значения.
+
+В отдельной test/staging среде моделировать outage/latency PostgreSQL, outage Redis, исчерпание pool, отказ collector, медленные startup/shutdown и ошибки миграций. Проверить безопасный отказ доступа, отсутствие ложного успеха и восстановление после возвращения зависимости. Fault injection нельзя направлять на production или сторонние системы без явного разрешения.
+
+| Этап | Работа | Доказательство выхода |
+| --- | --- | --- |
+| 04-A Baseline | Снять повторяемый профиль | Метаданные и сопоставимые запуски |
+| 04-B SLO | Утвердить SLI/SLO и error budget | Цели утверждены владельцем |
+| 04-C Bottleneck | Воспроизвести profiler/query plan | Причина подтверждена |
+| 04-D Improvement | Реализовать минимально достаточное изменение | Измеренное улучшение и regression tests |
+| 04-E Resilience | Проверить отказ и восстановление | Безопасное поведение и runbook |
+| 04-F Capacity review | Сравнить результаты со спросом и стоимостью | Зафиксированное решение о capacity |
+
+Приёмка требует безопасных повторяемых тестов, утверждённых целей, сравнения при одинаковых условиях, оценки latency/errors/throughput/resources, ограниченных retry/cache/queue состояний, fail-closed поведения и capacity runbook без обещаний неограниченного роста.

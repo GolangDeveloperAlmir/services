@@ -1,5 +1,8 @@
 # Code of Conduct / Правила сообщества
 
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+
+<a id="english"></a>
 ## English
 
 We are committed to making participation in this project a respectful and
@@ -15,6 +18,7 @@ privately to [@GolangDeveloperAlmir](https://github.com/GolangDeveloperAlmir);
 include enough context to investigate and do not post private information
 publicly.
 
+<a id="russian"></a>
 ## На русском
 
 Мы стремимся сделать участие в проекте уважительным и открытым для всех.
