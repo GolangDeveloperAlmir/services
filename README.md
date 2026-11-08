@@ -125,7 +125,8 @@ make architecture
 [наблюдаемость](docs/observability.md),
 [нагрузочные проверки](docs/performance.md), [обзор продукта](docs/product-overview.md),
 [план развития и будущие ТЗ](docs/roadmap.md),
-[участие в разработке](CONTRIBUTING.md) и [политика раскрытия](SECURITY.md).
+[участие в разработке](CONTRIBUTING.md), [политика раскрытия](SECURITY.md)
+и [инструкции для AI-агентов](AGENTS.md).
 
 ### Лицензия и поддержка
 
@@ -260,7 +261,8 @@ Start at the [documentation index](docs/index.md): [architecture](docs/architect
 [observability](docs/observability.md),
 [load testing](docs/performance.md), [product overview](docs/product-overview.md),
 [proposed roadmap and future specifications](docs/roadmap.md),
-[contributing](CONTRIBUTING.md), and [responsible disclosure](SECURITY.md).
+[contributing](CONTRIBUTING.md), [responsible disclosure](SECURITY.md), and
+[AI agent guidance](AGENTS.md).
 
 The roadmap is a planning document, not a feature or delivery commitment.
 Its detailed technical specifications are currently maintained in Russian.

@@ -18,6 +18,7 @@
 - [Поддержка](../SUPPORT.md)
 - [Лицензия](../LICENSE)
 - [Цитирование проекта](../CITATION.cff)
+- [Инструкции для AI-агентов](../AGENTS.md)
 - [Журнал изменений](../CHANGELOG.md)
 
 ## English
@@ -38,6 +39,7 @@
 - [Support](../SUPPORT.md)
 - [License](../LICENSE)
 - [Citing the project](../CITATION.cff)
+- [AI agent guidance](../AGENTS.md)
 - [Changelog](../CHANGELOG.md)
 
 The Python API documents its public modules, classes, and operations with
