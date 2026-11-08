@@ -1,5 +1,9 @@
 # Media catalog and browser playback / Каталог медиа и воспроизведение
 
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+
+<a id="english"></a>
+
 ## Current behavior
 
 The administrator console supports five animated CSS scenes: city, nature,
@@ -73,6 +77,7 @@ rules, and acceptance criteria are specified in
 a future specification, not a claim that ingestion or temporary-container
 processing is already available.
 
+<a id="russian"></a>
 ## Текущее поведение
 
 В административной панели доступны пять анимированных CSS-сцен: мегаполис,

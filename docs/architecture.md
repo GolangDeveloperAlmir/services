@@ -1,152 +1,194 @@
-# Architecture
+# Architecture and runtime design
 
-## Runtime shape
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** current checked-in runtime; proposed roadmap components are excluded.
 
-```mermaid
+<a id="english"></a>
+## English
+
+### Runtime topology
+
+![Current runtime topology](assets/user-service-architecture.svg)
+
+The local Compose environment separates ingress, application and data networks. Nginx terminates client TLS and forwards requests to Hypercorn/FastAPI over an isolated proxy network. PostgreSQL and Redis are reachable over a separate internal data network and are not published directly to the host.
+
+~~~mermaid
 flowchart LR
-    Client["Admin client"] -->|"TLS 1.2+ / HTTP2"| Nginx["Nginx TLS ingress"]
-    Nginx -->|"HTTP on isolated proxy network"| Hypercorn["Hypercorn + FastAPI"]
-    Hypercorn --> Auth["app.auth: local identity and admin policy"]
-    Hypercorn --> Users["app.users: profile API and service"]
-    Hypercorn --> Media["app.media: admin-only curated media"]
-    Users --> Auth
-    Auth --> DB["PostgreSQL: accounts, credentials, roles, audit"]
-    Users --> DB
-    Auth --> Redis["Redis: opaque sessions and rate limits"]
-    Media --> Assets["Read-only operator-managed media directory"]
-    Hypercorn -. optional OTLP traces .-> Collector["OpenTelemetry Collector"]
-```
+    Browser["Administrator browser"] -->|"HTTPS / TLS 1.2+"| Nginx["Nginx ingress"]
+    Nginx -->|"HTTP on isolated proxy network"| App["Hypercorn + FastAPI"]
+    App --> Users["Profile router / service / repository"]
+    App --> Auth["Authentication and admin policy"]
+    Users --> PostgreSQL[("PostgreSQL")]
+    Auth --> PostgreSQL
+    Auth --> Redis[("Redis sessions and rate limits")]
+    App --> Media["Read-only curated media"]
+    App -. "optional OTLP gRPC traces" .-> Collector["External collector"]
+~~~
 
-`app.main` is the composition root. `app.users` exposes profile operations;
-`app.auth` provides local credential/session services and deny-by-default
-authorization; `app.db` owns persistence models and connections; `app.core`
-owns settings, logging, and telemetry. The profile model lives in
-`app.db.user_model` so auth and profile code share one persistence entity
-without importing one another's domain package.
+Compose is a **development environment**, not a production deployment recipe. Its self-signed certificate, local port binding and network assumptions must not be copied unchanged into production.
 
-The same HTTPS origin serves a small administrator web console from
-`frontend/public`: `/` returns the HTML entry point and `/assets/*` serves its
-compiled TypeScript and stylesheet. The console calls the existing `/auth`,
-`/users`, and admin-only `/media` endpoints; it does not introduce a separate
-authentication or authorization layer. Its short-lived bearer token stays in
-tab memory and is not persisted in browser storage. Local media file selection
-remains in the browser and is never uploaded. The Docker build compiles
-TypeScript from the locked frontend toolchain and includes only the public
-assets in the runtime image.
+### Request lifecycle
 
-All profile routes require an active local administrator. The role and account
-state are checked against PostgreSQL on authenticated requests. Redis stores
-only short-lived session state and rate counters; Redis failure never grants
-access. Passwords are Argon2id hashes, and opaque bearer tokens are not stored
-in plaintext.
+1. The browser or API client establishes HTTPS to Nginx ingress.
+2. Nginx forwards the request to the ASGI application over the private proxy network.
+3. FastAPI applies trusted-host and request middleware checks. Forwarded client details are accepted only from configured proxy IPs.
+4. Authentication dependencies resolve the bearer token and validate session state, user state and the <code>admin</code> role.
+5. The route validates its request schema and calls a service.
+6. The service applies business invariants using a request-scoped async SQLAlchemy session.
+7. PostgreSQL remains authoritative for profile, credential and role data; Redis stores expiring session and rate-limit state.
+8. The response passes through security-header and structured request-logging middleware.
 
-Profile CRUD is split into an HTTP router, a business-rule service, and a
-repository. The repository applies bounded, deterministic pagination; the
-service canonicalizes email, maps missing profiles to domain errors, and
-translates database uniqueness races into a conflict. Profile creation does
-not provision local credentials or a role. The router owns HTTP response
-models and coordinates admin-session revocation for protected account changes.
-Each request uses one async database session; mutations commit in the service,
-while administrator invariants use a PostgreSQL advisory transaction lock.
+### Module boundaries
 
-Модель профиля расположена в `app.db.user_model`, чтобы auth и profile
-использовали одну сущность, не импортируя пакеты друг друга.
+| Module | Responsibility | Must not become |
+| --- | --- | --- |
+| <code>app.main</code> | Composition root, middleware, route registration and lifecycle | Domain/business-rule dumping ground |
+| <code>app.auth</code> | Local credentials, sessions, administrator authorization and audit | Public registration or implied tenant policy |
+| <code>app.users</code> | Profile HTTP contract, service rules and repository | Credential provisioning through profile creation |
+| <code>app.db</code> | SQLAlchemy models, engine and session lifecycle | A second source of business authorization |
+| <code>app.core</code> | Settings, logging and telemetry | A dependency on application/domain modules |
+| <code>app.media</code> | Admin-only read-only catalog access | Upload processing or arbitrary filesystem access |
+| <code>frontend</code> | Same-origin administrator interface | Independent authorization authority |
 
-## Trust boundaries and transport
+Dependencies point inward: <code>app.main</code> composes the system; <code>app.users</code> and <code>app.auth</code> use persistence; <code>app.db</code> uses shared core configuration; <code>app.core</code> must not depend on application or persistence modules. <code>tests/test_architecture.py</code> and <code>.importlinter</code> enforce configured dependency rules. Run <code>make architecture</code>.
 
-In Compose, Nginx terminates TLS 1.2/1.3 and forwards requests over HTTP only
-to the application on an isolated Docker proxy network. Nginx alone joins
-that network and a separate published ingress bridge; its host port is bound
-to `127.0.0.1:8000`. The application has no published host port. PostgreSQL
-and Redis are reachable only on the internal data network. Nginx overwrites
-forwarded headers, and the application accepts them only from its explicitly
-configured proxy IP. The development certificate is self-signed and must
-never be reused in production. The local Compose stack is for development,
-not production: use TLS-enabled PostgreSQL and Redis and a reviewed
-network/TLS configuration for production.
+### Profile operation path
 
-Outside Compose, `make run` starts Hypercorn directly with TLS certificates.
-Production configuration is validated at startup: explicit allowed hosts,
-TLS-enabled PostgreSQL, TLS-enabled Redis with a password, and
-`APP_ENV=production`. There is no implicit trust of forwarded client-IP
-headers.
+~~~mermaid
+sequenceDiagram
+    participant C as Admin client
+    participant R as FastAPI router
+    participant S as UserService
+    participant P as UserRepository
+    participant DB as PostgreSQL
+    C->>R: PATCH /users/{id} + Bearer token
+    R->>R: Authenticate active admin
+    R->>S: Validate profile update
+    S->>P: Load profile / check normalized email
+    P->>DB: SELECT
+    DB-->>P: Profile row
+    S->>P: Stage allowed field changes
+    P->>DB: UPDATE / COMMIT
+    DB-->>S: Persisted state
+    S-->>R: Updated profile
+    R-->>C: 200 response
+~~~
 
-В Compose TLS завершает Nginx; он один подключён к опубликованной ingress-сети
-и внутренней proxy-сети. Его host-порт привязан к `127.0.0.1:8000`; приложение
-не имеет опубликованного host-порта, а PostgreSQL/Redis доступны только во
-внутренней data-сети. Вне Compose Hypercorn может запускаться напрямую с TLS.
-Для production обязательны явные hosts, TLS PostgreSQL/Redis и пароль Redis.
-Подробности описаны в [security.md](security.md) и [data-model.md](data-model.md).
+The route does not directly own persistence rules. The service normalizes email, checks uniqueness and maps domain failures; the repository performs bounded queries and stages persistence operations. A database unique constraint remains the final guard against concurrent duplicate email writes.
 
-Каталог медиа доступен только администратору и монтируется read-only. Выбор
-локальных файлов остаётся в браузере; загрузки и worker не реализованы.
-Подробности: [media.md](media.md) и будущая спецификация
-[roadmap/05-media-pipeline.md](roadmap/05-media-pipeline.md).
+### Trust boundaries and data ownership
 
-## Module boundaries
+- **Browser to Nginx:** TLS protects client-to-ingress transport.
+- **Nginx to application:** HTTP is used only inside the isolated local Compose proxy network. Production network encryption must be selected from the real deployment trust model.
+- **Application to PostgreSQL/Redis:** production configuration requires TLS for PostgreSQL and Redis; credentials are supplied through environment/secret management.
+- **PostgreSQL:** source of truth for profiles, credentials, roles and audit records.
+- **Redis:** ephemeral session state and rate-limit counters. Redis failure must not create an authorization fallback.
+- **Media:** operator-managed regular files, exposed read-only through admin-only endpoints. No upload API or worker exists.
 
-Dependencies point inward:
+### Frontend boundary
 
-1. `app.main` is the composition root.
-2. `app.users` can depend on `app.auth` and persistence.
-3. `app.auth` can depend on `app.db`.
-4. `app.db` can depend on `app.core` settings.
-5. `app.core` must not depend on application or persistence modules.
+The API and console share one HTTPS origin. <code>/</code> serves the console entry point and <code>/assets/*</code> serves compiled assets. The short-lived bearer token stays in tab memory and is not persisted to browser storage; reloading the page requires a new login. Selecting a local file uses browser-local object URLs and does not upload the file.
 
-`tests/test_architecture.py` and `.importlinter` enforce these boundaries. Run
-both using `make architecture`.
+### Health, logs and traces
 
-## Data and API contracts
+<code>/health/live</code> is a liveness check; <code>/health/ready</code> checks required dependencies. Request-completion events are JSON logs. OpenTelemetry tracing is optional and configured by <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>. The repository does not currently configure a Prometheus metrics endpoint or dashboard stack. See [observability](observability.md) and [metrics](metrics.md).
 
-PostgreSQL migrations define user profiles, local credentials, roles, and
-security audit events. Redis session state is ephemeral. See
-[data-model.md](data-model.md) for the ER diagram and retention caveats.
+### Related documents
 
-FastAPI/Pydantic is the source of truth for OpenAPI. Generate the committed
-snapshot with `make openapi`; `make validate-specs` checks it against runtime
-routes and validates AsyncAPI's intentionally empty HTTP-only state using the
-bundled official schema.
+[API contract](api.md) · [PostgreSQL model](data-model.md) · [Security architecture](security.md) · [Technology rationale](technology-stack.md) · [Future initiatives](roadmap.md)
 
-Python module, class, and public function docstrings describe runtime
-boundaries and important service invariants. See [api.md](api.md) for the
-profile request contract and [data-model.md](data-model.md) for persisted
-entities.
+---
 
-## Operations and CI
+<a id="russian"></a>
+## Русский
 
-`docker-compose.yml` runs Nginx, the API, PostgreSQL, and password-protected
-Redis. The API uses a non-root, read-only multi-stage image; Nginx terminates
-TLS using mounted certificate material. `docker-compose.override.yml` adds
-source reload and a loopback-only database port for local development. The Dev
-Container uses the same project toolchain.
+### Runtime-топология
 
-CI runs tests, architectural checks, dependency and secret scans, SAST,
-workflow linting, CodeQL, a Trivy image gate, and a loopback-only authenticated
-performance smoke test. See [security.md](security.md) and
-[performance.md](performance.md).
+![Текущая runtime-топология](assets/user-service-architecture.svg)
 
-## Архитектура
+Локальное Compose-окружение разделяет ingress, приложение и сеть данных. Nginx завершает TLS-соединение клиента и передаёт запросы Hypercorn/FastAPI через изолированную proxy-сеть. PostgreSQL и Redis доступны через отдельную внутреннюю data-сеть и не публикуются напрямую на host.
 
-Сервис запускается через Hypercorn/FastAPI. `app.main` связывает компоненты,
-`app.users` предоставляет profile API, `app.auth` — локальные credentials,
-sessions и deny-by-default policy, `app.db` — модели/соединения, `app.core` —
-общие настройки, логи и telemetry. Все операции профиля требуют активную
-роль `admin`; состояние роли проверяется по PostgreSQL, сессии и rate-limit
-хранятся в Redis.
+~~~mermaid
+flowchart LR
+    Browser["Браузер администратора"] -->|"HTTPS / TLS 1.2+"| Nginx["Nginx ingress"]
+    Nginx -->|"HTTP в изолированной proxy-сети"| App["Hypercorn + FastAPI"]
+    App --> Users["Router / service / repository профилей"]
+    App --> Auth["Аутентификация и политика admin"]
+    Users --> PostgreSQL[("PostgreSQL")]
+    Auth --> PostgreSQL
+    Auth --> Redis[("Redis: сессии и rate limits")]
+    App --> Media["Read-only каталог медиа"]
+    App -. "опциональные OTLP gRPC traces" .-> Collector["Внешний collector"]
+~~~
 
-Приложение доступно только по TLS; для HTTP возвращается `426`. Для production
-обязательны явные hosts, TLS PostgreSQL/Redis и пароль Redis. Подробные
-диаграммы, security controls и CI gates описаны в
-[security.md](security.md) и [data-model.md](data-model.md).
+Compose-стек является **окружением разработки**, а не рецептом production-развёртывания. Self-signed сертификат, локальную привязку порта и сетевые предположения нельзя без изменений переносить в production.
 
-OpenAPI генерируется из FastAPI; обновите snapshot командой `make openapi`.
-AsyncAPI фиксирует отсутствие event channels. Направление импортов проверяют
-pytest и Import Linter.
+### Жизненный цикл запроса
 
-Profile CRUD разделён на HTTP-router, сервис бизнес-правил и repository.
-Repository выполняет ограниченную стабильную пагинацию; сервис нормализует
-email, обрабатывает отсутствующие профили и конфликты уникальности. Создание
-профиля не создаёт local credential и не назначает роль. Router преобразует
-ответы в API-схемы и координирует отзыв admin-сессий; изменения инвариантов
-администраторов сериализуются PostgreSQL advisory lock. Публичные Python
-модули, классы и функции описаны docstrings.
+1. Браузер или API-клиент устанавливает HTTPS-соединение с Nginx ingress.
+2. Nginx передаёт запрос ASGI-приложению через приватную proxy-сеть.
+3. FastAPI выполняет проверки trusted hosts и request middleware. Forwarded client details принимаются только от настроенных proxy IP.
+4. Authentication dependencies проверяют bearer-токен, состояние сессии и пользователя, а также роль <code>admin</code>.
+5. Route валидирует request schema и вызывает service.
+6. Service применяет бизнес-инварианты с request-scoped async SQLAlchemy session.
+7. PostgreSQL остаётся источником истины для профилей, credentials и ролей; Redis хранит временные сессии и rate-limit state.
+8. Ответ проходит через middleware security headers и структурированного логирования запросов.
+
+### Границы модулей
+
+| Модуль | Ответственность | Чем не должен становиться |
+| --- | --- | --- |
+| <code>app.main</code> | Composition root, middleware, регистрация маршрутов и lifecycle | Свалкой доменной и бизнес-логики |
+| <code>app.auth</code> | Локальные credentials, сессии, авторизация администратора и audit | Публичной регистрацией или неявной tenant-политикой |
+| <code>app.users</code> | HTTP-контракт профилей, service-правила и repository | Способом создавать credentials при создании профиля |
+| <code>app.db</code> | SQLAlchemy-модели, engine и lifecycle сессий | Вторым источником бизнес-авторизации |
+| <code>app.core</code> | Settings, logging и telemetry | Зависимостью от application/domain-модулей |
+| <code>app.media</code> | Admin-only доступ к read-only каталогу | Обработчиком загрузок или произвольной ФС |
+| <code>frontend</code> | Same-origin интерфейс администратора | Независимым источником авторизации |
+
+Зависимости направлены внутрь: <code>app.main</code> собирает систему; <code>app.users</code> и <code>app.auth</code> используют persistence; <code>app.db</code> использует общие настройки core; <code>app.core</code> не должен зависеть от application или persistence. <code>tests/test_architecture.py</code> и <code>.importlinter</code> проверяют заданные правила. Запуск: <code>make architecture</code>.
+
+### Путь операции с профилем
+
+~~~mermaid
+sequenceDiagram
+    participant C as Admin client
+    participant R as FastAPI router
+    participant S as UserService
+    participant P as UserRepository
+    participant DB as PostgreSQL
+    C->>R: PATCH /users/{id} + Bearer token
+    R->>R: Аутентификация активного admin
+    R->>S: Проверка обновления профиля
+    S->>P: Загрузка профиля / проверка email
+    P->>DB: SELECT
+    DB-->>P: Строка профиля
+    S->>P: Подготовка разрешённых изменений
+    P->>DB: UPDATE / COMMIT
+    DB-->>S: Сохранённое состояние
+    S-->>R: Обновлённый профиль
+    R-->>C: Ответ 200
+~~~
+
+Route не должен владеть persistence-правилами напрямую. Service нормализует email, проверяет уникальность и преобразует domain errors; repository выполняет ограниченные запросы и подготавливает изменения. Уникальный constraint БД остаётся последней защитой от конкурентной записи одинакового email.
+
+### Границы доверия и владение данными
+
+- **Браузер → Nginx:** TLS защищает транспорт от клиента до ingress.
+- **Nginx → приложение:** HTTP используется только внутри изолированной локальной Compose proxy-сети. Для production шифрование выбирается исходя из реальной модели доверия.
+- **Приложение → PostgreSQL/Redis:** production-конфигурация требует TLS для PostgreSQL и Redis; credentials передаются через environment/secret management.
+- **PostgreSQL:** источник истины для профилей, credentials, ролей и audit-записей.
+- **Redis:** временное состояние сессий и rate-limit counters. Отказ Redis не должен открывать обход авторизации.
+- **Медиа:** обычные файлы оператора, выдаваемые в read-only режиме через admin-only endpoints. API загрузки и worker отсутствуют.
+
+### Граница frontend
+
+API и панель используют один HTTPS origin. <code>/</code> отдаёт точку входа панели, <code>/assets/*</code> — собранные assets. Короткоживущий bearer-токен остаётся в памяти вкладки и не сохраняется в browser storage; после перезагрузки страницы нужен новый вход. Выбор локального файла использует browser-local object URLs и не отправляет файл на сервер.
+
+### Health, логи и traces
+
+<code>/health/live</code> проверяет liveness; <code>/health/ready</code> проверяет обязательные зависимости. Завершение HTTP-запроса записывается в JSON log. OpenTelemetry tracing является опциональной и включается через <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>. Сейчас репозиторий не настраивает Prometheus metrics endpoint или набор dashboards. См. [наблюдаемость](observability.md) и [метрики](metrics.md).
+
+### Связанные документы
+
+[API-контракт](api.md) · [Модель PostgreSQL](data-model.md) · [Архитектура безопасности](security.md) · [Причины выбора технологий](technology-stack.md) · [Будущие инициативы](roadmap.md)

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+<title id="title">Documentation map</title><desc id="desc">Four reading paths: product, engineering, operations and governance, connected to one bilingual documentation standard.</desc>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b34"/><stop offset="1" stop-color="#233c64"/></linearGradient><style>
+.t{font:700 22px Inter,Arial,sans-serif;fill:#f7f9ff}.s{font:400 14px Inter,Arial,sans-serif;fill:#b9c8df}.k{font:700 11px Inter,Arial,sans-serif;fill:#7edbd0;letter-spacing:1.4px}
+</style></defs>
+<rect width="1200" height="360" rx="24" fill="url(#bg)"/>
+<text x="48" y="54" class="k">DOCUMENTATION SYSTEM</text><text x="48" y="88" class="t">One handbook. Four reader journeys. Two synchronized languages.</text>
+<g>
+<rect x="48" y="130" width="250" height="130" rx="16" fill="#2a4168" stroke="#58729f"/>
+<text x="72" y="170" class="k">01 / PRODUCT</text><text x="72" y="207" class="t">Product overview</text><text x="72" y="234" class="s">Capabilities · scope · roadmap</text>
+<rect x="326" y="130" width="250" height="130" rx="16" fill="#2a4168" stroke="#58729f"/>
+<text x="350" y="170" class="k">02 / ENGINEERING</text><text x="350" y="207" class="t">Architecture & API</text><text x="350" y="234" class="s">Data · contracts · technology</text>
+<rect x="604" y="130" width="250" height="130" rx="16" fill="#2a4168" stroke="#58729f"/>
+<text x="628" y="170" class="k">03 / OPERATIONS</text><text x="628" y="207" class="t">Security & metrics</text><text x="628" y="234" class="s">Observability · testing · media</text>
+<rect x="882" y="130" width="270" height="130" rx="16" fill="#2a4168" stroke="#58729f"/>
+<text x="906" y="170" class="k">04 / GOVERNANCE</text><text x="906" y="207" class="t">Contributor guide</text><text x="906" y="234" class="s">Ownership · reporting · standards</text>
+</g>
+<path d="M173 280V302H1026V280" stroke="#80d9d0" stroke-width="2" fill="none"/>
+<rect x="360" y="290" width="480" height="48" rx="12" fill="#36537f"/>
+<text x="600" y="320" text-anchor="middle" class="t" font-size="17">English first → Russian second · same meaning and scope</text>
+</svg>

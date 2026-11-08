@@ -1,211 +1,90 @@
-# 03. Identity и жизненный цикл аккаунта
+# PLAN-03: Identity and account lifecycle
 
-> **Статус:** условное будущее ТЗ (`PLAN-03`). Сегодня локальные credentials
-> предназначены для администраторов; пользовательского self-service, MFA,
-> SSO/OIDC, подтверждения email и recovery flow нет. Не считать изложенное
-> текущей функцией.
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** conditional future specification. Current local credentials are for administrators only; end-user self-service, MFA, SSO/OIDC, email verification and recovery are not implemented.
 
-## 1. Цель
+<a id="english"></a>
+## English
 
-Добавить только те пользовательские identity workflows, которые подтверждены
-продуктом, при сохранении чёткого разделения:
+### Goal and domain separation
 
-- **Profile:** контактные/публичные атрибуты, разрешённые владельцем.
-- **Identity/account:** способ входа, статус верификации, credentials или
-  внешний provider subject.
-- **Membership/authorization:** организации, роли, разрешения и их срок
-  действия.
-- **Session:** ограниченный по времени результат аутентификации, который
-  отзывается при изменении account/security state.
+Add only identity workflows supported by a confirmed product requirement. Preserve distinct concepts:
 
-Profile CRUD не должен автоматически выдавать право входа или членство.
+| Concept | Responsibility |
+| --- | --- |
+| Profile | Contact and public attributes approved by the product |
+| Identity/account | Login subject, credential or external provider subject, verification state |
+| Membership/authorization | Organization membership, role and permission scope |
+| Session | Time-bounded authentication result, revoked when account/security state changes |
 
-## 2. Варианты и рекомендуемый порядок решений
+Profile CRUD must never grant login access or membership automatically.
 
-1. Подтвердить субъектов, входящие приложения, требуемые assurance level и
-   обязательность MFA.
-2. Согласовать, остаются ли локальные admin credentials, заменяются OIDC или
-   поддерживаются одновременно с раздельной политикой.
-3. Решить, распространяется ли identity глобально между организациями или
-   имеет отдельную связь в каждой организации; учесть `PLAN-02`.
-4. Определить linking/unlinking, reauthentication, account suspension,
-   deprovisioning и удаление данных.
-5. Выбрать OIDC provider capability и operational owner до написания
-   provider-specific кода.
-6. Только после этого реализовывать соответствующие функции — не обязательно
-   весь список ниже.
+### Decisions before provider-specific work
 
-## 3. Возможные функциональные потоки
+Confirm user populations, client applications and required authentication assurance; whether local administrator credentials remain, are replaced by OIDC or coexist under separate policy; whether identity is global or organization-scoped; account linking/unlinking and deprovisioning rules; and an operational owner for the selected identity provider.
 
-### 3.1 MFA
+### Optional workflows
 
-Если политика требует MFA, спроектировать:
+**MFA:** enrol only after recent authentication; verify factor possession before activation; prefer phishing-resistant authenticators where policy requires; protect recovery codes, enforce one-time use and expiry, rate-limit attempts, audit enrollment/removal and revoke or step-up existing sessions. Never log OTPs or recovery codes.
 
-- enrolment только после свежей аутентификации; повторная проверка перед
-  привилегированной операцией;
-- набор допустимых методов и assurance requirements (например,
-  phishing-resistant authenticator как предпочтительная цель; TOTP как
-  fallback только при утверждении);
-- подтверждение фактического владения фактором до его активации;
-- безопасное хранение секретов recovery codes/факторов, однократное
-  использование и немедленное invalidation после потребления;
-- отзыв/перепривязку фактора через recovery flow, защищённый от social
-  engineering;
-- ограничения brute-force, аудит включения/удаления, уведомление пользователя
-  и отзыв либо step-up существующих сессий.
+**OIDC SSO:** use authorization code flow, exact redirect allowlists, cryptographically random state/nonce, issuer/audience/signature/time validation, trusted discovery/JWKS endpoints and approved algorithms. Federated identity is the stable issuer/subject pair, not email alone. Never auto-link accounts solely because email values match. Define provider outage, key rotation, deprovisioning and logout behaviour.
 
-Не отправлять OTP или recovery code в application logs, traces, analytics,
-audit payload, URL или support ticket.
+**Email verification and invitations:** use one-time hash-only tokens with purpose binding, expiry, replay protection, resend cooldown and anti-enumeration responses. An invitation must be bound to organization, identity/address, permitted role, inviter, expiry and one-time state; a client parameter must not elevate role. Keep public registration disabled until abuse controls and support are approved.
 
-### 3.2 OIDC SSO
+**Local account recovery:** use random one-time tokens stored as hashes, limited expiry/attempts, account binding, session-version changes and explicit session revocation. Responses must not reveal whether an account exists. Define delivery abuse controls and a manual auditable fallback before implementation.
 
-Предлагаемый authorization-code flow должен:
+### Data and API design constraints
 
-- применять TLS и точный allowlist redirect URI; не использовать wildcard
-  callback;
-- генерировать и проверять криптографически стойкие `state` и `nonce`;
-- проверять issuer, audience/client, подпись, временные claims, допустимый
-  алгоритм и необходимые scopes; доверять только заранее настроенным
-  discovery/JWKS endpoints;
-- моделировать provider identity по устойчивой паре `(issuer, subject)`, а
-  не по изменяемому email;
-- не создавать автоматически связь с локальным аккаунтом лишь потому, что
-  email совпал; linking требует подтверждённого владения обеими сторонами или
-  управляемого invitation flow;
-- ограничивать разрешённые issuer/tenant и задавать безопасное поведение при
-  недоступном provider/JWKS, ротации ключей и отзыве пользователя;
-- вести аудит изменения конфигурации provider без хранения токенов и
-  assertion.
+Do not replace existing users and local_credentials implicitly. Potential new entities include external provider subjects, MFA factors, recovery credentials, verification challenges, trusted IdP configuration and audit events. Define encryption, uniqueness, cascade, retention and token-minimization through ADR and threat modelling. Never store access/refresh/ID tokens in plaintext or put secrets in query parameters.
 
-Импорт групп/ролей из provider не должен давать привилегию без явной,
-проверяемой mapping policy. Решить, применяются ли provider-initiated logout
-и back-channel logout; не обещать глобальный logout, если клиентские сессии
-нельзя отозвать.
+Versioned contracts must specify login/challenge/step-up, MFA enrollment and recovery, provider callback/link/unlink, email verification, invitations, recovery consumption, status codes, replay behaviour and rate limits. Exact endpoints wait for UX, provider and API-version decisions.
 
-### 3.3 Подтверждение адреса и приглашение
+### Compatibility, testing and acceptance
 
-Если email используется для связи/входа:
+Preserve the bootstrap CLI until a replacement break-glass procedure is approved. Separate administrator login from end-user login. Do not link accounts by email alone. Test OIDC state/nonce, issuer, audience, signature, expiry, redirect manipulation, JWKS rotation/outage and replay; MFA replay/races/brute force/recovery; invitation and recovery enumeration/expiry/parallel consumption; session revocation on password/factor/provider/membership changes; and absence of secrets/PII in logs and traces.
 
-- отправка подтверждения только после безопасного создания/изменения адреса;
-- одноразовый токен с hash-only хранением, ограниченным TTL, purpose binding
-  и защитой от replay;
-- одинаково безопасные ответы, не раскрывающие существование учётной записи;
-- rate limiting, resend cooldown, защита от enumeration и abuse email;
-- изменение адреса не становится активным до подтверждения; определить
-  поведение старых сессий и уведомление старого/нового адреса;
-- invitation token привязан к организации, адресу/identity, допустимой роли,
-  inviter, сроку и одноразовому состоянию; нельзя расширить роль параметром
-  клиента.
+Acceptance requires an approved use case and threat model for every feature, stable federated identity, proof of account ownership for linking, recovery that cannot bypass tenant/RBAC/MFA policy, hash-only secret storage, one-time/expiry/rate-limit/replay protections, tested revocation and support runbooks. Obtain independent security review before a public external-authentication launch.
 
-Публичная регистрация остаётся выключенной, пока владелец продукта не
-утвердит abuse model, квоты, anti-automation и поддержку.
+---
 
-### 3.4 Восстановление локального доступа
+<a id="russian"></a>
+## Русский
 
-Recovery flow должен быть безопаснее простого сброса по email:
+### Цель и разделение домена
 
-- не раскрывать, существует ли адрес/аккаунт;
-- использовать случайный одноразовый token, хранить только hash, привязать к
-  аккаунту и операции, ограничить время и число попыток;
-- отозвать/обновить token после использования, изменить session version и
-  определить, какие активные сессии отзываются;
-- уведомлять о запросе и успешной смене без раскрытия секрета;
-- ограничить частоту по нескольким ключам и не позволять массово рассылать
-  письма; настроить доставку, bounce/abuse и incident ownership;
-- иметь ручную, auditable процедуру восстановления, если email/provider
-  недоступен.
+Добавлять только те identity workflows, которые подтверждены продуктовыми требованиями. Сохранять отдельные понятия:
 
-До согласования почтового провайдера, доказательства владения, privacy,
-rate limits и поддержки recovery не внедрять.
+| Понятие | Ответственность |
+| --- | --- |
+| Profile | Контактные и публичные атрибуты, разрешённые продуктом |
+| Identity/account | Субъект входа, credential или внешний provider subject, состояние верификации |
+| Membership/authorization | Членство в организации, роль и область разрешений |
+| Session | Ограниченный по времени результат аутентификации, отзываемый при изменении account/security state |
 
-## 4. Предварительные модели данных и API
+CRUD профилей никогда не должен автоматически выдавать право входа или membership.
 
-Существующие `users` и `local_credentials` не должны автоматически заменяться.
-Для обсуждения могут потребоваться отдельные сущности/атрибуты:
+### Решения до provider-specific разработки
 
-- внешний credential: provider/issuer, subject, user reference, timestamps;
-- факторы MFA и одноразовые recovery credentials;
-- verification/recovery challenges с hash, purpose, expiry, consumption state;
-- конфигурация доверенных IdP с владельцем/статусом;
-- audit событий по security state changes.
+Подтвердить аудитории и клиентские приложения, требуемый уровень assurance; сохраняются ли локальные admin credentials, заменяются OIDC или работают вместе по отдельной политике; является identity глобальной или organization-scoped; правила linking/unlinking и deprovisioning; владельца эксплуатации выбранного identity provider.
 
-Это не утверждённая схема: хранение, шифрование, уникальность, cascade,
-retention и раздельное управление provider credentials требуют ADR и threat
-model. Не хранить access/refresh/ID token в открытом виде; если использование
-provider tokens действительно необходимо, отдельно определить минимизацию,
-шифрование, срок жизни и отзыв.
+### Возможные workflows
 
-Версионированный API-контракт должен описывать:
+**MFA:** enrollment только после недавней аутентификации; доказать владение фактором до активации; предпочитать phishing-resistant authenticators, если того требует политика; защищать recovery codes, обеспечивать одноразовость и expiry, ограничивать попытки rate limit, аудировать подключение/удаление и отзывать либо step-up существующие сессии. OTP и recovery codes запрещено логировать.
 
-- login/challenge/step-up и session assurance;
-- MFA enrollment, verification, disable и recovery;
-- provider callback/link/unlink и безопасные ошибки;
-- email verification, invitation accept/revoke/expire;
-- recovery request/consume без enumeration;
-- status codes, replay behavior, rate limits и события аудита.
+**OIDC SSO:** применять authorization code flow, точный allowlist redirect URI, криптографически случайные state/nonce, проверки issuer/audience/signature/time, доверенные discovery/JWKS endpoints и утверждённые алгоритмы. Федеративная identity определяется устойчивой парой issuer/subject, а не одним email. Нельзя связывать аккаунты автоматически только из-за совпадения email. Нужно определить outage provider, ротацию ключей, deprovisioning и поведение logout.
 
-Конкретные URL и JSON payload не фиксируются до выбора UX, IdP и версии API.
-Секреты не помещать в query parameters.
+**Email verification и приглашения:** использовать одноразовые hash-only токены с привязкой к назначению, expiry, replay protection, cooldown повторной отправки и anti-enumeration responses. Invitation связывается с организацией, identity/address, разрешённой ролью, inviter, expiry и одноразовым состоянием; параметр клиента не должен повышать роль. Публичную регистрацию не включать до утверждения abuse controls и поддержки.
 
-## 5. Совместимость и переход
+**Восстановление локального аккаунта:** случайные одноразовые токены хранить только в виде hash, ограничить TTL/попытки, привязать к аккаунту, менять session version и явно отзывать сессии. Ответы не должны раскрывать существование аккаунта. До реализации утвердить анти-abuse меры доставки и ручной auditable fallback.
 
-- Сохранить bootstrap CLI для первого локального системного администратора,
-  пока не согласован альтернативный break-glass путь.
-- Развести admin login policy и end-user login policy; не ослаблять текущие
-  требования ради удобства перехода.
-- Разрешить ограниченный dual-auth период только с явными датами и способом
-  отключения устаревающего flow.
-- Провести инвентаризацию локальных credentials, provider identity collision
-  и непроверенных email; не связывать записи автоматом по email.
-- Проверить отзыв Redis-сессий, смену `session_version` и поведение при
-  недоступности provider, Redis и почтовой доставки.
-- Не выпускать recovery/MFA без соответствующих поддержки, incident
-  playbooks и сценария потери фактора.
+### Ограничения данных и API
 
-## 6. Security/privacy тестирование
+Не заменять существующие users и local_credentials неявно. Возможные сущности: внешние provider subjects, MFA factors, recovery credentials, verification challenges, trusted IdP configuration и audit events. Правила encryption, uniqueness, cascade, retention и минимизации токенов утверждаются через ADR и threat model. Access/refresh/ID tokens нельзя хранить в plaintext, секреты нельзя передавать через query parameters.
 
-- OIDC: некорректные `state`/`nonce`, replay, wrong issuer/audience,
-  expired/future claims, подпись/algorithm mismatch, JWKS rotation/outage,
-  redirect manipulation, callback replay.
-- Linking: совпавший email без подтверждения, чужой subject, повторная
-  привязка, удалённый provider account, конфликт issuer/subject.
-- MFA: повторный/просроченный код, race при consumption, перебор, повторное
-  enrollment, потеря/отзыв фактора и recovery codes.
-- Email/invitation/recovery: enumeration, token replay, expiry, rate limits,
-  параллельное потребление, повторная отправка, истечение/отзыв invitation и
-  попытка повысить роль.
-- Sessions: отзыв при смене пароля/factor/provider/membership; step-up
-  повторно проверяется на защищённых операциях.
-- Privacy: токены, коды и PII отсутствуют в логах, traces, метриках и ошибках;
-  audit содержит только утверждённый минимум.
-- API: contract tests подтверждают единообразие ошибок и отсутствие
-  credential/account enumeration.
+Версионируемый контракт должен описывать login/challenge/step-up, MFA enrollment/recovery, provider callback/link/unlink, email verification, invitations, recovery consumption, status codes, replay behaviour и rate limits. Конкретные endpoints определяются после выбора UX, provider и версии API.
 
-Провести независимую security review до публичного запуска внешней
-аутентификации или восстановления доступа.
+### Совместимость, тестирование и критерии приёмки
 
-## 7. Критерии приёмки
+Сохранять bootstrap CLI, пока не утверждена альтернативная break-glass процедура. Разделять admin login и end-user login. Не связывать аккаунты по одному email. Проверять OIDC state/nonce, issuer, audience, signature, expiry, redirect manipulation, JWKS rotation/outage и replay; MFA replay/races/brute force/recovery; enumeration/expiry/parallel consumption для invitation и recovery; отзыв сессий при смене password/factor/provider/membership; отсутствие секретов/PII в logs и traces.
 
-- Для каждой функции есть явная бизнес-потребность и утверждённый threat
-  model/assurance policy.
-- Каноничная идентичность основана на устойчивом provider subject, а не
-  только на email.
-- Account linking требует доказательства владения, а recovery не обходит
-  tenant/RBAC или MFA-политику.
-- Секреты и одноразовые токены не хранятся/логируются в открытом виде.
-- Реализованы одноразовость, expiry, rate limit, replay protection и
-  отзыв сессий, проверенные автоматизированными тестами.
-- Поддержка может диагностировать отказ, восстановить доступ и отключить
-  provider по runbook без обходного ослабления авторизации.
-- Совместимость с существующими admin credentials и CLI документирована;
-  старый flow удаляется только отдельным решением.
-
-## English summary
-
-`PLAN-03` conditionally specifies MFA, OIDC, email verification/invitations,
-and local-account recovery. Identity, profile, membership, and session state
-must remain separate. Provider subjects—not email alone—identify federated
-accounts; account linking, recovery, token storage, rate limits, session
-revocation, and support procedures require explicit security decisions before
-implementation. No user self-service or identity feature is currently
-available.
+Приёмка требует утверждённый use case и threat model для каждой функции, устойчивую federated identity, доказательство владения при linking, recovery без обхода tenant/RBAC/MFA, hash-only хранение секретов, проверенные одноразовость/expiry/rate limit/replay protections и session revocation, support runbooks. До публичного запуска внешней аутентификации провести независимый security review.

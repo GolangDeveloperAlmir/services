@@ -1,5 +1,8 @@
 # Support / Поддержка
 
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+
+<a id="english"></a>
 ## English
 
 - Start with the [README](README.md) and the [documentation index](docs/index.md).
@@ -16,6 +19,7 @@ This is a community-supported project. Maintainers do not promise a response
 time or service-level agreement. Do not post passwords, tokens, personal data,
 or production information in public reports.
 
+<a id="russian"></a>
 ## На русском
 
 - Начните с [README](README.md) и [индекса документации](docs/index.md).

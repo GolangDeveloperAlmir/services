@@ -1,8 +1,13 @@
 # Changelog
 
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+
+<a id="english"></a>
+## English
+
 Notable changes to this project are documented here.
 
-## Unreleased
+### Unreleased
 
 - Add Compose and Dev Container development environments.
 - Add reusable CI, pre-commit checks, dependency/security tooling, and
@@ -19,7 +24,10 @@ Notable changes to this project are documented here.
 - Add contract-focused Python docstrings to application, migration, tooling,
   and performance modules; synchronize the user-facing and operations guides.
 
-## Не выпущено
+<a id="russian"></a>
+## Русский
+
+### Не выпущено
 
 - Добавлены Compose и Dev Container для разработки.
 - Добавлены переиспользуемый CI, pre-commit, инструменты анализа зависимостей

@@ -1,5 +1,8 @@
 # Authorship, ownership and attribution
 
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+
+<a id="english"></a>
 ## English
 
 **Project:** User Service  
@@ -15,6 +18,7 @@ Third-party dependencies, generated assets, trademarks, and externally sourced m
 
 Contributors retain any rights they hold in their own contributions. By submitting a contribution, they confirm that they are entitled to do so and agree that the contribution may be distributed under the repository license, as described in [CONTRIBUTING.md](CONTRIBUTING.md). A contribution does not grant rights over unrelated third-party materials.
 
+<a id="russian"></a>
 ## На русском
 
 **Проект:** User Service  

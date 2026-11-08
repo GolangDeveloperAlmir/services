@@ -1,267 +1,190 @@
-# План развития проекта / Project roadmap
+# Project roadmap and decision gates
 
-> **Статус:** проектный документ. Это направление развития и набор будущих
-> требований, а не утверждённые обязательства по срокам, бюджету или выпуску
-> функций. Ни одна из инициатив ниже не считается реализованной только
-> потому, что описана здесь.
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** proposals only. No target date, budget or delivery commitment is approved.
 
-## Краткое резюме
+<a id="english"></a>
+## English
 
-Сейчас User Service — контролируемый API управления профилями с локальными
-учётными данными администраторов, PostgreSQL, Redis-сессиями и HTTPS. Все
-операции над профилями доступны активным администраторам. В проекте пока нет
-изоляции организаций, пользовательского самообслуживания, MFA, SSO/OIDC,
-автоматического хранения/удаления audit-записей по политике, а также
-утверждённых production SLO и процедуры релизного развёртывания.
+### Current baseline
 
-Предлагаемая последовательность:
+User Service is currently an administrator-only profile API with local administrator credentials, PostgreSQL, Redis-backed sessions, HTTPS ingress and a same-origin web console. It does not currently provide tenant isolation, public registration, user self-service, MFA, SSO/OIDC, account recovery, user-media uploads or a production deployment with approved SLOs.
 
-1. **Зафиксировать продуктовые решения и границы доверия.** Определить
-   целевых потребителей, режим эксплуатации, владельцев данных и приоритет
-   сценариев. Не начинать многопользовательскую модель без решения, нужен ли
-   сервис одному оператору или нескольким организациям.
-2. **Подготовить эксплуатационную основу.** Описать production deployment,
-   резервирование и восстановление, аудит/retention, мониторинг, реагирование
-   и релизные проверки. Сначала измерить базовые показатели; численные SLO
-   согласовать отдельно.
-3. **При подтверждённой потребности в нескольких организациях — внедрить
-   tenant-aware модель и RBAC.** Изоляция данных должна быть спроектирована
-   до появления межорганизационных API и проверена на уровне запросов,
-   авторизации, миграций и тестов.
-4. **При необходимости пользовательских аккаунтов — развить identity
-   lifecycle.** Отдельно спроектировать MFA, интеграцию OIDC, подтверждение
-   адреса и восстановление доступа; не смешивать identity с CRUD профиля.
-5. **Масштабировать по измеренным ограничениям.** Выбирать пагинацию,
-   оптимизацию запросов, кэширование и асинхронную обработку только после
-   получения воспроизводимых профилей нагрузки и целевых SLO.
-6. **Безопасно принимать пользовательские медиа только после отдельного
-   решения.** Текущий каталог read-only и управляется оператором; загрузки
-   отключены. Целевой quarantine/worker/cleanup pipeline описан как будущее
-   ТЗ в [05-media-pipeline.md](roadmap/05-media-pipeline.md).
+The roadmap is deliberately conditional. Its purpose is to expose decisions, migration risks and acceptance evidence before implementation, not to turn every possible feature into a commitment.
 
-## 1. Статус и правила чтения
+### Principles
 
-Документы описывают **целевое состояние и требования к будущей работе**.
-Они не меняют текущий API, схему БД, эксплуатационные гарантии и политику
-доступа. Источники текущего поведения — действующие документы API,
-архитектуры, модели данных и безопасности, а также реализация.
+- **Deny by default:** missing or ambiguous identity, role, tenant scope or dependency state never expands access.
+- **Separate profile, identity and access:** a profile does not automatically become a login account; roles do not replace resource ownership.
+- **Security before convenience:** privileged actions require explicit authorization and auditable flows.
+- **Measure before scaling:** no new cache, queue, database, broker or orchestrator without a confirmed workload and failure model.
+- **Operations are part of completion:** backup/restore, monitoring, runbooks, ownership and rollback accompany production-facing features.
+- **Compatibility is intentional:** API and schema changes need a migration and client-support strategy.
 
-Статусы инициатив:
+### Initiative map
 
-| Статус | Значение |
-| --- | --- |
-| `Предложено` | Направление сформулировано; владелец продукта ещё должен подтвердить потребность. |
-| `Требует решения` | Без ADR или явного решения владельца нельзя безопасно выбрать поведение. |
-| `Готово к декомпозиции` | Решения и критерии согласованы; работу можно превращать в issue/PR по частям. |
-| `В работе` | Допустимо ставить только после фактического старта реализации. |
-| `Завершено` | Все критерии приёмки выполнены, документация и эксплуатация обновлены. |
-
-Все инициативы в этой редакции имеют статус **«Предложено»** или
-**«Требует решения»**. Приоритеты `P0`–`P3` задают очередность обсуждения,
-а не даты и не гарантированный объём релиза.
-
-## 2. Продуктовая цель и ограничения
-
-### Цель-кандидат
-
-Сохранить небольшой и безопасный профильный API, который может работать в
-контролируемой среде, а при подтверждении продуктовой потребности —
-эволюционировать в сервис профилей организаций с явной изоляцией доступа.
-Не превращать проект автоматически в универсальную IAM-платформу.
-
-### Неподлежащие компромиссу принципы
-
-- **Deny by default:** отсутствие или неоднозначность tenant-контекста не
-  должно расширять доступ.
-- **Явное разделение профиля, identity и доступа:** существующий профиль не
-  становится аккаунтом автоматически; роль не заменяет проверку принадлежности
-  организации.
-- **Безопасная миграция:** схему и данные расширять совместимыми этапами;
-  переключение на обязательный tenant-контекст выполнять только после
-  проверки заполненности и восстановления.
-- **Минимум чувствительных данных:** не добавлять в логи, трассы, метрики,
-  audit или отчёты credentials, токены и содержимое профилей.
-- **Сначала требования и измерения:** решения о SLO, хранении и масштабировании
-  опираются на продуктовые соглашения и базовые замеры, а не на предположения.
-- **Эксплуатируемость — часть готовности:** функция не готова без мониторинга,
-  инструкции поддержки, тестов отказа и понятной процедуры отката.
-- **Совместимость по умолчанию:** изменение API, схемы и auth flow должно
-  иметь описанную стратегию версионирования, уведомления и удаления старого
-  поведения.
-
-### Не является целью этого плана
-
-Без отдельного решения не планировать публичную регистрацию, полноценный
-провайдер идентификации, хранение платёжных или медицинских данных,
-микросервисное разбиение, event bus, multi-region HA или горизонтальное
-масштабирование «на всякий случай».
-
-## 3. Карта инициатив
-
-| ID | Приоритет | Инициатива | Зависимости | Основной документ |
+| ID | Priority | Initiative | Condition / dependency | Specification |
 | --- | --- | --- | --- | --- |
-| `PLAN-00` | P0 | Продуктовые решения, threat model и критерии запуска | Нет | Этот документ, разделы 4–5 |
-| `PLAN-01` | P0 | Production readiness, резервирование, аудит и наблюдаемость | `PLAN-00` | [01-platform-foundation.md](roadmap/01-platform-foundation.md) |
-| `PLAN-02` | P1, условно | Организации, tenant isolation и granular RBAC | `PLAN-00`, `PLAN-01` | [02-multi-tenancy-rbac.md](roadmap/02-multi-tenancy-rbac.md) |
-| `PLAN-03` | P1/P2, условно | MFA, OIDC и жизненный цикл пользовательского аккаунта | `PLAN-00`, модель доступа из `PLAN-02` при multi-tenant запуске | [03-identity-lifecycle.md](roadmap/03-identity-lifecycle.md) |
-| `PLAN-04` | P2/P3, условно | Надёжность, измерение производительности и масштабирование | `PLAN-01`; реальные профили использования | [04-reliability-scale.md](roadmap/04-reliability-scale.md) |
-| `PLAN-05` | P1, условно | Безопасный импорт медиа и изолированная обработка | `PLAN-00`, `PLAN-01`; отдельное решение о приёме пользовательских файлов | [05-media-pipeline.md](roadmap/05-media-pipeline.md) |
+| PLAN-00 | P0 | Product scope, threat model and launch criteria | Required before major product expansion | This page |
+| PLAN-01 | P0 | Production operations, recovery, audit and observability | After PLAN-00 decisions | [Platform foundation](roadmap/01-platform-foundation.md) |
+| PLAN-02 | P1, conditional | Organizations, tenant isolation and scoped RBAC | Only if multi-organization use is confirmed | [Multi-tenancy](roadmap/02-multi-tenancy-rbac.md) |
+| PLAN-03 | P1/P2, conditional | MFA, OIDC, verification and account recovery | Only for approved identity workflows | [Identity lifecycle](roadmap/03-identity-lifecycle.md) |
+| PLAN-04 | P2/P3, conditional | Measured reliability and capacity improvement | After operational baseline and real workload | [Reliability and scale](roadmap/04-reliability-scale.md) |
+| PLAN-05 | P1, conditional | Safe media ingestion and isolated processing | Only if user uploads become a product requirement | [Media pipeline](roadmap/05-media-pipeline.md) |
 
-### Предлагаемые этапы
+### Proposed sequence
 
-#### Этап 0 — решения и готовность требований (`PLAN-00`)
+~~~mermaid
+flowchart TD
+    A["PLAN-00: product and threat-model decisions"] --> B["PLAN-01: operational foundation"]
+    B --> C{"Multi-organization demand?"}
+    C -->|Confirmed| D["PLAN-02: tenant-aware access"]
+    C -->|Not required| E["Keep single-operator model"]
+    D --> F{"Identity workflows required?"}
+    E --> G["PLAN-04: measured improvement only when justified"]
+    F -->|Yes| H["PLAN-03: identity lifecycle"]
+    F -->|No| G
+    B --> I{"User media ingestion required?"}
+    I -->|Yes| J["PLAN-05: isolated media pipeline"]
+    I -->|No| K["Keep operator-managed read-only catalog"]
+~~~
 
-**Задача:** выбрать продуктовый сценарий и определить, что именно означает
-«готов к использованию» для целевых потребителей.
+The sequence is a decision model, not a schedule. PLAN-02 and PLAN-03 may be excluded entirely if the service remains a single-operator internal API. PLAN-04 should not start because traffic might grow someday. PLAN-05 remains independent and must not weaken the existing read-only media boundary.
 
-**Выход:** решения о single-operator vs multi-organization, типе пользователей,
-владельце профиля, допустимых данных, окружении эксплуатации, требованиях
-комплаенса и владельцах операционных процессов. Зафиксировать решения в ADR;
-не утверждать численные SLA/SLO до получения оснований.
+### Decisions required before implementation
 
-**Gate:** назначены владельцы продукта, безопасности и эксплуатации; открытые
-вопросы, влияющие на схему данных или границы доступа, закрыты либо явно
-исключены из ближайшего релиза.
-
-#### Этап 1 — безопасная эксплуатация (`PLAN-01`)
-
-**Задача:** сделать контролируемый запуск и восстановление проверяемыми.
-
-**Выход:** целевая схема deployment, управление секретами и сертификатами,
-миграции и release gate, резервное копирование/восстановление, политика
-аудита и приватности, базовые сигналы наблюдаемости, runbooks и согласованные
-SLO/пороги после измерений.
-
-**Gate:** проведён тест восстановления; readiness, алертинг и сценарий
-инцидента проверены в непроизводственной среде; нет неразобранных критичных
-рисков, связанных с эксплуатацией.
-
-#### Этап 2 — tenant-aware доступ (`PLAN-02`, только если multi-tenant нужен)
-
-**Задача:** обеспечить изоляцию организаций и полномочия, ограниченные
-конкретным ресурсом и организацией.
-
-**Выход:** утверждённая доменная модель и матрица разрешений, миграционный
-план для существующих профилей и администраторов, tenant-scoped API и
-репозитории, доказательная тестовая матрица изоляции и план поэтапного
-переключения.
-
-**Gate:** каждый tenant-owned ресурс имеет проверенную организационную
-принадлежность; negative-тесты cross-tenant доступа проходят; неизвестный
-контекст и ошибки зависимостей приводят к отказу; миграция проверена на
-копии репрезентативных данных.
-
-#### Этап 3 — identity workflows (`PLAN-03`, только по требованиям)
-
-**Задача:** добавить необходимые способы аутентификации и восстановления
-аккаунта, не превращая профиль в источник полномочий.
-
-**Выход:** утверждённые политики MFA/SSO, безопасные state/nonce и callback
-flow для OIDC, процесс привязки аккаунта, восстановление доступа, audit
-события и поддержка миграции действующих локальных администраторов.
-
-**Gate:** end-to-end сценарии восстановления и отзыва сессий проверены;
-невозможна неявная привязка учётной записи по одному совпадающему email;
-есть процедура восстановления и отключения провайдера.
-
-#### Этап 4 — измеренная надёжность и рост (`PLAN-04`)
-
-**Задача:** устранить подтверждённые узкие места и подготовить сервис к
-согласованной нагрузке.
-
-**Выход:** профиль нагрузки, целевые бюджеты задержки/ошибок, оптимизации,
-регрессионные тесты и capacity runbook. Кэш, очередь, новые хранилища и
-горизонтальное масштабирование рассматриваются только при подтверждённой
-потребности.
-
-**Gate:** повторяемые замеры на описанном окружении удовлетворяют согласованным
-SLO; ошибки, деградация зависимостей и восстановление проверены.
-
-Этапы 2 и 3 могут быть исключены, если сервис остаётся внутренним
-single-operator API. Этап 4 не следует начинать только из-за теоретического
-роста трафика.
-
-## 4. Решения, необходимые до реализации
-
-Решения нужно записывать как короткие ADR с контекстом, выбранным вариантом,
-альтернативами, последствиями, владельцем и датой пересмотра.
-
-| Решение | Вопрос | Почему блокирует работу |
+| Decision | Question | Why it matters |
 | --- | --- | --- |
-| `ADR-001` | Один оператор или несколько организаций? | Определяет владение профилем, модель tenant и API. |
-| `ADR-002` | Аккаунт глобален или принадлежит организации? Может ли один человек состоять в нескольких организациях? | Определяет ключи, уникальность email и membership. |
-| `ADR-003` | Кто и как приглашает участников; нужна ли открытая регистрация? | Публичное создание аккаунта резко меняет threat model. |
-| `ADR-004` | Требуются ли локальные credentials, OIDC, MFA или их комбинация? | Определяет модель credentials, сессий, bootstrap и recovery. |
-| `ADR-005` | Какие данные профиля допустимы, кто controller/processor и где разрешено хранение? | Определяет privacy, сроки хранения и удаление. |
-| `ADR-006` | Где и кем будет эксплуатироваться сервис; как управляются secrets, TLS и database? | Определяет deployment и процедуру аварийного восстановления. |
-| `ADR-007` | Целевые доступность, задержка, RPO/RTO и окна обслуживания? | Без бизнес-соглашений нельзя задать честные SLO/алерты. |
-| `ADR-008` | Сколько хранить security audit и source IP, кто может читать/экспортировать записи? | Определяет privacy и retention implementation. |
-| `ADR-009` | Нужен ли внешний контракт `/v1`, и как долго поддерживать legacy API? | Определяет совместимость миграции клиентов. |
-| `ADR-010` | Нужны ли интеграционные события/webhooks и какие гарантии доставки требуются? | Предотвращает преждевременное внедрение брокера и сложных гарантий. |
+| ADR-001 | One operator or multiple organizations? | Defines ownership, tenant boundaries and API design |
+| ADR-002 | Is identity/profile global or organization-specific? Can one person join multiple organizations? | Defines keys, membership and email uniqueness |
+| ADR-003 | Who invites users? Is public registration needed? | Changes abuse model and public attack surface |
+| ADR-004 | Local credentials, OIDC, MFA, or a combination? | Defines authentication, session and recovery design |
+| ADR-005 | Which profile data is allowed, who controls/processes it, and where may it live? | Defines privacy, retention and deletion |
+| ADR-006 | Who operates the service and manages TLS, secrets and databases? | Defines deployment and incident ownership |
+| ADR-007 | What availability, latency, RPO/RTO and maintenance targets are actually needed? | Prevents invented SLOs |
+| ADR-008 | Which audit events and source IP fields are necessary, and for how long? | Defines privacy and audit retention |
+| ADR-009 | Is a versioned external API required, and how long is compatibility kept? | Defines client migration |
+| ADR-010 | Are external events/webhooks needed, with what delivery guarantees? | Prevents premature broker adoption |
 
-## 5. Общие критерии готовности инициативы
+### Definition of Ready
 
-До планирования реализации у инициативы должны быть:
+An initiative is ready for implementation only after it has an owner, confirmed user problem, bounded scope and non-goals, approved ADRs for disputed data/access/deployment decisions, threat model, data classification, versioned contracts, migration plan, measurable acceptance criteria, failure tests, operational ownership, rollout/rollback plan and support documentation.
 
-- владелец и подтверждённая пользовательская проблема;
-- согласованные scope, исключения и бизнес-правила;
-- ADR для спорных решений о данных, доступе, совместимости и deployment;
-- обновлённые диаграммы угроз и классификация чувствительных данных;
-- контракты API/событий и политика версионирования;
-- план миграции, backfill, проверки данных, блокировки/времени простоя и
-  восстановления;
-- проверяемые functional, authorization, privacy, security, migration,
-  failure-mode и regression тесты;
-- план rollout, метрики результата, алерты, runbook и процедура отката;
-- оценка сопровождения, стоимости и внешних зависимостей.
+### Definition of Done
 
-### Definition of Done для будущей реализации
+A future initiative is complete only when its acceptance criteria are verified; migrations and recovery paths are tested; API and architecture docs match the implementation; authorization/privacy regressions are covered; operational signals and runbooks have owners; compatibility changes are approved; CI and target staging/pilot checks pass; and known limitations are recorded.
 
-Инициатива считается завершённой только когда:
+### Principal risks
 
-1. согласованные критерии приёмки проверены автоматизированно или
-   документированной ручной процедурой;
-2. миграция прошла вперёд и проверен recovery/rollback-путь, если он
-   предусмотрен;
-3. контрактная документация, OpenAPI/AsyncAPI и примеры актуальны;
-4. реализованы проверки отказа по умолчанию, прав доступа и утечек данных;
-5. операционные сигналы, runbook, алерты и владельцы поддержки готовы;
-6. backward compatibility и удаление старого поведения выполнены только
-   после согласованного периода поддержки;
-7. проверка в CI и целевой staging/pilot прошли; известные ограничения
-   записаны, ответственное лицо и дальнейшее действие назначены.
-
-## 6. Риски и контрольные меры
-
-| Риск | Последствие | Запланированный контроль |
+| Risk | Consequence | Control |
 | --- | --- | --- |
-| Начать multi-tenant реализацию без утверждённой модели владения | Межтенантная утечка или дорогой повторный миграционный проект | Закрыть `ADR-001`–`ADR-003`; threat model и tenant isolation тесты до rollout. |
-| Считать текущую роль `admin` достаточной моделью доступа | Избыточные права пользователей | Матрица разрешений и проверки на уровне ресурса/операции; отдельный системный доступ. |
-| Перенести все legacy-профили в один tenant без владельца данных | Непреднамеренное объединение данных разных субъектов | Не создавать default tenant автоматически; классифицировать данные и подтвердить владельца до backfill. |
-| Включить SSO без безопасной привязки аккаунтов | Account takeover через ошибочное связывание identity | Явный linking flow, проверенный `iss`/`sub`, state/nonce, тесты коллизий; запрет auto-link по email. |
-| Автоматически удалять audit по произвольному сроку | Потеря расследуемости или нарушение privacy требований | Согласовать назначение, минимизацию, retention, legal hold и права доступа до автоматизации. |
-| Ввести SLO без измерений | Ложная уверенность и шумные алерты | Сначала baseline, затем согласование цели и error budget с владельцем продукта. |
-| Внедрить кеш/очередь/новую инфраструктуру преждевременно | Дополнительные режимы отказа без пользы | Требовать воспроизводимый bottleneck/сценарий и оценку общей стоимости владения. |
-| Большая неатомарная миграция | Недоступность или неполные данные | Expand/backfill/validate/contract, контрольные суммы и испытание восстановления. |
+| Multi-tenancy without a data ownership model | Cross-tenant data exposure or costly migration | Resolve ADR-001–003 and require negative isolation tests |
+| Treating a global admin role as tenant authorization | Excessive access | Scope every resource query and mutation |
+| Assigning all legacy users to a default tenant | Unintended data aggregation | Require owner mapping; never silently create a default tenant |
+| Linking OIDC accounts by matching email alone | Account takeover | Require verified linking and stable issuer/subject identity |
+| Automating audit deletion without a policy | Loss of evidence or privacy violation | Approve purpose, fields, retention and legal hold first |
+| Publishing SLOs without measurements | False reliability claims | Establish baseline, then approve objectives |
+| Premature infrastructure expansion | More failure modes and operating cost | Require a reproducible bottleneck and cost/benefit decision |
+| Large non-atomic migration | Downtime or inconsistent data | Expand/backfill/validate/contract and rehearse recovery |
 
-## 7. Документы инициатив
+### Detailed specifications
 
-- [01 — Платформенная и эксплуатационная основа](roadmap/01-platform-foundation.md)
-- [02 — Организации, tenant isolation и RBAC](roadmap/02-multi-tenancy-rbac.md)
-- [03 — Identity и жизненный цикл аккаунта](roadmap/03-identity-lifecycle.md)
-- [04 — Надёжность, производительность и масштабирование](roadmap/04-reliability-scale.md)
-- [05 — Безопасный импорт и обработка медиа](roadmap/05-media-pipeline.md)
+1. [PLAN-01 — Platform and operations foundation](roadmap/01-platform-foundation.md)
+2. [PLAN-02 — Organizations, tenant isolation and RBAC](roadmap/02-multi-tenancy-rbac.md)
+3. [PLAN-03 — Identity and account lifecycle](roadmap/03-identity-lifecycle.md)
+4. [PLAN-04 — Reliability, performance and scale](roadmap/04-reliability-scale.md)
+5. [PLAN-05 — Secure media ingestion and processing](roadmap/05-media-pipeline.md)
 
-## English summary
+---
 
-This is a proposal, not a delivery commitment. The current service is an
-admin-only profile API; it does not provide tenant isolation, end-user
-self-service, MFA, SSO/OIDC, automated audit retention, or approved production
-SLOs. The proposed order is: resolve product and operating decisions, establish
-production readiness, add tenant-aware authorization only if multi-organization
-use is confirmed, add identity workflows only for agreed requirements, and
-scale only against measured workloads. User media ingestion remains disabled
-until its isolated processing design and operating limits are approved. Each
-initiative has a separate Russian
-technical specification, explicit decision gates, migration/test requirements,
-and acceptance criteria.
+<a id="russian"></a>
+## Русский
+
+### Текущее состояние
+
+Сейчас User Service — административный API профилей с локальными credentials администраторов, PostgreSQL, сессиями в Redis, HTTPS ingress и веб-панелью на том же origin. В текущей реализации нет изоляции арендаторов, публичной регистрации, пользовательского self-service, MFA, SSO/OIDC, восстановления аккаунта, загрузки пользовательских медиа или production-развёртывания с утверждёнными SLO.
+
+Roadmap носит условный характер. Его задача — показать необходимые решения, риски миграции и критерии приёмки до начала разработки, а не превратить все возможные функции в обещания.
+
+### Принципы
+
+- **Deny by default:** отсутствие или неоднозначность identity, роли, tenant scope или состояния зависимости не расширяет доступ.
+- **Разделять профиль, identity и доступ:** профиль не становится учётной записью автоматически, а роль не заменяет владение ресурсом.
+- **Безопасность прежде удобства:** привилегированные действия требуют явной авторизации и проверяемого аудита.
+- **Измерять до масштабирования:** не добавлять cache, queue, database, broker или orchestrator без подтверждённого workload и модели отказов.
+- **Эксплуатация входит в готовность:** backup/restore, мониторинг, runbook, владельцы и rollback сопровождают production-функции.
+- **Совместимость проектируется:** изменения API и схемы требуют стратегии миграции и поддержки клиентов.
+
+### Карта инициатив
+
+| ID | Приоритет | Инициатива | Условие / зависимость | Спецификация |
+| --- | --- | --- | --- | --- |
+| PLAN-00 | P0 | Продуктовый scope, threat model и критерии запуска | Требуется до крупных расширений продукта | Эта страница |
+| PLAN-01 | P0 | Production-эксплуатация, восстановление, аудит и наблюдаемость | После решений PLAN-00 | [Платформенная основа](roadmap/01-platform-foundation.md) |
+| PLAN-02 | P1, условно | Организации, tenant isolation и scoped RBAC | Только при подтверждённом multi-organization сценарии | [Мультитенантность](roadmap/02-multi-tenancy-rbac.md) |
+| PLAN-03 | P1/P2, условно | MFA, OIDC, подтверждение и восстановление аккаунта | Только для утверждённых identity-сценариев | [Lifecycle identity](roadmap/03-identity-lifecycle.md) |
+| PLAN-04 | P2/P3, условно | Измеряемая надёжность и развитие capacity | После operational baseline и появления реальной нагрузки | [Надёжность и масштаб](roadmap/04-reliability-scale.md) |
+| PLAN-05 | P1, условно | Безопасная загрузка и изолированная обработка медиа | Только если пользовательские загрузки станут требованием продукта | [Media pipeline](roadmap/05-media-pipeline.md) |
+
+### Предлагаемая последовательность
+
+~~~mermaid
+flowchart TD
+    A["PLAN-00: продуктовые решения и threat model"] --> B["PLAN-01: эксплуатационная основа"]
+    B --> C{"Нужны несколько организаций?"}
+    C -->|Да, подтверждено| D["PLAN-02: tenant-aware доступ"]
+    C -->|Нет| E["Сохранить single-operator модель"]
+    D --> F{"Нужны identity workflows?"}
+    E --> G["PLAN-04: измеренные улучшения только по необходимости"]
+    F -->|Да| H["PLAN-03: lifecycle identity"]
+    F -->|Нет| G
+    B --> I{"Нужна загрузка пользовательских медиа?"}
+    I -->|Да| J["PLAN-05: изолированный media pipeline"]
+    I -->|Нет| K["Сохранить read-only каталог оператора"]
+~~~
+
+Это модель принятия решений, а не расписание. PLAN-02 и PLAN-03 можно полностью исключить, если сервис останется внутренним API одного оператора. PLAN-04 не следует начинать из-за гипотетического будущего роста трафика. PLAN-05 независим и не должен ослаблять существующую read-only границу каталога.
+
+### Решения до реализации
+
+| Решение | Вопрос | Почему важно |
+| --- | --- | --- |
+| ADR-001 | Один оператор или несколько организаций? | Определяет владение данными, tenant boundaries и API |
+| ADR-002 | Identity/profile глобальны или принадлежат организации? Может ли человек состоять в нескольких организациях? | Определяет ключи, membership и уникальность email |
+| ADR-003 | Кто приглашает пользователей? Нужна ли публичная регистрация? | Меняет abuse model и публичную поверхность атаки |
+| ADR-004 | Локальные credentials, OIDC, MFA или комбинация? | Определяет аутентификацию, сессии и recovery |
+| ADR-005 | Какие данные профиля допустимы, кто controller/processor и где они могут храниться? | Определяет privacy, retention и удаление |
+| ADR-006 | Кто эксплуатирует сервис и управляет TLS, secrets и БД? | Определяет deployment и владельцев инцидентов |
+| ADR-007 | Какие availability, latency, RPO/RTO и maintenance targets действительно нужны? | Не позволяет выдумывать SLO |
+| ADR-008 | Какие audit-события и source IP необходимы и как долго их хранить? | Определяет privacy и retention |
+| ADR-009 | Нужен ли версионируемый внешний API и как долго поддерживать совместимость? | Определяет миграцию клиентов |
+| ADR-010 | Нужны ли внешние события/webhooks и какие гарантии доставки? | Предотвращает преждевременное внедрение broker |
+
+### Definition of Ready
+
+Инициатива готова к реализации только после назначения владельца, подтверждения пользовательской проблемы, ограничения scope и не-целей, утверждения ADR для спорных решений о данных/доступе/deployment, threat model, классификации данных, версионируемых контрактов, плана миграции, измеримых критериев приёмки, тестов отказов, эксплуатационных владельцев, rollout/rollback и документации поддержки.
+
+### Definition of Done
+
+Инициатива завершена только после проверки критериев приёмки; тестирования миграций и восстановления; согласования API/архитектурной документации с реализацией; регрессионных тестов авторизации и privacy; назначения владельцев сигналов и runbook; утверждения изменений совместимости; успешных CI и staging/pilot проверок; фиксации известных ограничений.
+
+### Основные риски
+
+| Риск | Последствие | Контроль |
+| --- | --- | --- |
+| Мультитенантность без модели владения данными | Межтенантная утечка или дорогая миграция | Решить ADR-001–003 и обязать negative isolation tests |
+| Глобальная admin-роль как tenant-авторизация | Избыточный доступ | Scope для каждого query и mutation |
+| Автоматическое назначение legacy-пользователей в default tenant | Непреднамеренное объединение данных | Требовать owner mapping; не создавать tenant по умолчанию молча |
+| Связывание OIDC по одному email | Захват аккаунта | Подтверждённый linking и устойчивая issuer/subject identity |
+| Автоудаление audit без политики | Потеря доказательств или нарушение privacy | Сначала утвердить цель, поля, retention и legal hold |
+| Публикация SLO без измерений | Ложные обещания надёжности | Снять baseline, затем согласовать цели |
+| Преждевременное расширение инфраструктуры | Больше отказов и эксплуатационных затрат | Требовать воспроизводимое узкое место и оценку затрат/пользы |
+| Большая неатомарная миграция | Downtime или неконсистентные данные | Expand/backfill/validate/contract и проверка восстановления |
+
+### Подробные спецификации
+
+1. [PLAN-01 — Платформенная и эксплуатационная основа](roadmap/01-platform-foundation.md)
+2. [PLAN-02 — Организации, tenant isolation и RBAC](roadmap/02-multi-tenancy-rbac.md)
+3. [PLAN-03 — Identity и жизненный цикл аккаунта](roadmap/03-identity-lifecycle.md)
+4. [PLAN-04 — Надёжность, производительность и масштабирование](roadmap/04-reliability-scale.md)
+5. [PLAN-05 — Безопасный импорт и обработка медиа](roadmap/05-media-pipeline.md)

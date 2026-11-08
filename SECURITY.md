@@ -1,43 +1,49 @@
 # Security policy
 
-Implemented controls and operational limitations are described in the
-[security architecture and operations guide](docs/security.md).
-User-profile CRUD authorization, email-conflict handling, administrator
-invariants, and session revocation are documented in
-[docs/api.md](docs/api.md) and [docs/security.md](docs/security.md).
+> **Language / Язык:** [English](#english) · [Русский](#russian)
 
-## Сообщить об уязвимости
+The implemented controls and operational assumptions are described in the [security architecture guide](docs/security.md). This policy explains how to report a suspected vulnerability responsibly.
 
-Не публикуйте детали уязвимостей в открытых issues. Используйте приватную
-форму GitHub Security Advisories (Security → Advisories → Report a
-vulnerability). Если она недоступна, свяжитесь с сопровождающими приватно
-через известный корпоративный канал.
+<a id="english"></a>
+## English
 
-Укажите версии, влияние и минимальные шаги воспроизведения. Не включайте
-реальные credentials, персональные или production-данные.
+### Reporting a vulnerability
 
-## Поддерживаемые версии и ответ
+Please do not report security vulnerabilities in public issues, pull requests or discussions. Use GitHub's private vulnerability reporting for this repository: **Security → Advisories → Report a vulnerability**, if enabled. If private reporting is unavailable, contact the repository maintainer privately through an established channel.
 
-Исправления безопасности вносятся в последнюю поддерживаемую версию default
-ветки. Сопровождающие подтвердят получение сообщения и согласуют расследование,
-исправление и раскрытие информации с автором.
+Include the affected version/commit, impact, relevant environment details and concise reproduction steps. Do not include real credentials, access tokens, private keys, personal data or production customer data in a report.
 
-## Reporting a vulnerability
+### Supported versions
 
-Please do not report security vulnerabilities in public issues. Use GitHub's
-private vulnerability reporting for this repository (Security → Advisories →
-Report a vulnerability) if enabled. If private reporting is unavailable, contact the
-repository maintainers privately through an established organization channel.
+Security fixes are applied to the latest maintained version on the default branch. Upgrade to the latest maintained revision before reporting a suspected fixed issue. The repository does not currently publish a commercial support lifecycle or guaranteed response window.
 
-Include affected versions, impact, and concise reproduction details. Do not
-include real credentials, personal data, or production customer data.
+### Response
 
-## Supported versions
+The maintainer will acknowledge reports as soon as practical, investigate reproducible reports and coordinate remediation and disclosure with the reporter. Response time depends on availability and severity; no service-level agreement is implied.
 
-Security fixes are applied to the latest maintained version on the default
-branch. Upgrade to the latest release before reporting a fixed issue.
+### Scope notes
 
-## Response
+The service is an administrator-only profile API, not a complete identity platform. Security limitations and production prerequisites are documented in [docs/security.md](docs/security.md). Automated checks and badges are not a security certification.
 
-Maintainers will acknowledge reports as soon as practical, investigate
-reproducible reports, and coordinate a fix and disclosure with the reporter.
+---
+
+<a id="russian"></a>
+## Русский
+
+### Сообщение об уязвимости
+
+Не публикуйте сведения об уязвимостях в открытых issues, pull requests или обсуждениях. Используйте приватную форму GitHub для этого репозитория: **Security → Advisories → Report a vulnerability**, если она включена. Если приватная форма недоступна, свяжитесь с сопровождающим проекта конфиденциально через известный канал связи.
+
+Укажите затронутую версию/commit, влияние, важные параметры окружения и краткие шаги воспроизведения. Не включайте в сообщение реальные credentials, access tokens, private keys, персональные или production-данные клиентов.
+
+### Поддерживаемые версии
+
+Исправления безопасности применяются к последней сопровождаемой версии в default branch. Перед сообщением о предположительно исправленной проблеме обновитесь до последней сопровождаемой ревизии. Репозиторий не публикует коммерческий lifecycle поддержки и гарантированный срок ответа.
+
+### Ответ на сообщение
+
+Сопровождающий подтвердит получение сообщения по мере возможности, исследует воспроизводимые отчёты и согласует с автором исправление и раскрытие информации. Срок ответа зависит от доступности сопровождающего и серьёзности проблемы; SLA не подразумевается.
+
+### Границы проекта
+
+Сервис является административным API профилей, а не полноценной Identity-платформой. Ограничения безопасности и production-предпосылки описаны в [docs/security.md](docs/security.md). Автоматические проверки и badges не являются сертификатом безопасности.

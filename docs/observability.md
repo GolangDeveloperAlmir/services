@@ -1,76 +1,126 @@
-# Logging and tracing
+# Observability: logs and tracing
 
-## Application logs
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** structured request logs are implemented; OpenTelemetry tracing is optional.
 
-The application configures standard-library logging to emit JSON lines to
-stderr. HTTP request completion records include the method, URL path, response
-status, and elapsed time. Query strings, authorization headers, passwords,
-bearer tokens, and request bodies are intentionally not logged. The URL path
-can include a profile UUID; restrict log access and apply the deployment's
-retention/privacy policy.
-CRUD request bodies, email values, query strings, and authorization credentials
-are not included in the request log. The response status and duration can be
-used to correlate `404` lookups and `409` uniqueness conflicts without
-recording submitted profile data.
+<a id="english"></a>
+## English
 
-## OpenTelemetry tracing
+### Application logs
 
-FastAPI request spans are exported using OTLP over gRPC when
-`OTEL_EXPORTER_OTLP_ENDPOINT` is set. For example, with a local OpenTelemetry
-Collector listening on its default gRPC port:
+The application configures Python standard-library logging with a JSON-lines formatter and writes to stderr. HTTP request-completion records include:
 
-```sh
+| Field | Meaning |
+| --- | --- |
+| <code>timestamp</code> | UTC timestamp |
+| <code>level</code> | Log severity |
+| <code>logger</code> | Logger name |
+| <code>message</code> | Human-readable event message |
+| <code>http_method</code> | HTTP method |
+| <code>http_path</code> | URL path, without query string |
+| <code>http_status_code</code> | Response status |
+| <code>duration_ms</code> | Request elapsed time in milliseconds |
+| <code>service_name</code> | Included for telemetry configuration events when present |
+| <code>exception</code> | Formatted exception details when a log record contains exception info |
+
+Query strings, authorization headers, passwords, bearer tokens and request bodies are not deliberately included in the request-completion log. The URL path can contain a profile UUID; restrict log access and apply a deployment-specific privacy and retention policy. The formatter does not provide a central log store, retention engine or alerting system.
+
+Example shape:
+
+~~~json
+{
+  "timestamp": "2026-11-08T08:00:00+00:00",
+  "level": "INFO",
+  "logger": "app.main",
+  "message": "HTTP request completed",
+  "http_method": "GET",
+  "http_path": "/health/ready",
+  "http_status_code": 200,
+  "duration_ms": 4.27
+}
+~~~
+
+### OpenTelemetry tracing
+
+FastAPI request tracing is enabled only when <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> is configured. The application uses the OpenTelemetry SDK and OTLP exporter over gRPC. <code>OTEL_SERVICE_NAME</code> overrides the default service name; otherwise <code>APP_NAME</code> is used.
+
+Local example with an OpenTelemetry Collector listening on its OTLP gRPC port:
+
+~~~sh
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
 OTEL_SERVICE_NAME=user-service \
 uv run hypercorn app.main:app --bind 127.0.0.1:8000 \
   --certfile certs/server.crt --keyfile certs/server.key
-```
+~~~
 
-Without an endpoint, tracing instrumentation and exporters are not started.
-Configure collector authentication and TLS according to the collector
-deployment; do not put credentials in the repository. OpenTelemetry exporter
-environment options such as `OTEL_EXPORTER_OTLP_HEADERS` can be used where
-appropriate. Treat traces as potentially sensitive operational data; do not
-export authentication headers or request bodies.
+This is a local example. For production, use an authenticated and encrypted collector endpoint, restrict network egress and review which span attributes may contain identifiers or personal data.
 
-## API schema
+### What is not provided
 
-FastAPI builds the OpenAPI schema from the registered routes and Pydantic
-models at runtime. Browse `/docs` for Swagger UI or retrieve `/openapi.json`
-for the generated JSON document. The generated OpenAPI snapshot is checked into the repository and validated
-with `make validate-specs`.
+The repository does not currently configure a Prometheus metrics endpoint, metrics exporter, Grafana dashboards, alert manager, centralized log platform or production trace backend. OpenTelemetry tracing is not equivalent to full observability. Metric definitions and measurement gaps are listed in [metrics.md](metrics.md).
 
-## Наблюдаемость
+### Operational use
 
-Приложение пишет JSON-lines в stderr. Для HTTP-запросов логируются метод,
-путь, статус и время обработки; query-параметры и тела запросов не записываются.
-Путь может содержать UUID профиля; ограничивайте доступ к логам и задавайте
-политику хранения. Email и тела CRUD-запросов не логируются; по статусу и
-времени можно анализировать ответы `404`/`409` без записи данных профиля.
+Correlate a slow request using the request path, status and duration fields, then inspect database/Redis health and optional traces. Avoid adding raw payloads, passwords, tokens or personal data to logs. Define log access, retention, deletion, incident export and monitoring ownership before any production deployment.
 
-### Трассировка
+---
 
-FastAPI request spans экспортируются по OTLP/gRPC, если задан
-`OTEL_EXPORTER_OTLP_ENDPOINT`. Без endpoint инструментирование не запускается.
-Не храните секреты экспортера в репозитории; используйте окружение deployment.
+<a id="russian"></a>
+## Русский
 
-### API-схема
+### Логи приложения
 
-FastAPI генерирует OpenAPI во время выполнения из роутов и моделей Pydantic.
-Swagger UI доступен по `/docs`, JSON — по `/openapi.json`, ReDoc — по `/redoc`.
-Версия схемы в репозитории обновляется командой `make openapi`.
+Приложение использует logging из стандартной библиотеки Python с JSON-lines formatter и пишет в stderr. Записи о завершении HTTP-запроса содержат:
 
-## Подключение коллектора / Collector setup
+| Поле | Значение |
+| --- | --- |
+| <code>timestamp</code> | Timestamp в UTC |
+| <code>level</code> | Уровень сообщения |
+| <code>logger</code> | Имя logger |
+| <code>message</code> | Читаемое описание события |
+| <code>http_method</code> | HTTP-метод |
+| <code>http_path</code> | URL path без query string |
+| <code>http_status_code</code> | Status ответа |
+| <code>duration_ms</code> | Длительность запроса в миллисекундах |
+| <code>service_name</code> | Присутствует у событий конфигурации telemetry, если задан |
+| <code>exception</code> | Форматированная информация об исключении при наличии exception info |
 
-```sh
+Query strings, authorization headers, пароли, bearer-токены и тела запросов намеренно не добавляются в request-completion log. В URL path может находиться UUID профиля; ограничьте доступ к логам и задайте privacy/retention policy для конкретной среды. Formatter не создаёт централизованное хранилище логов, механизм retention или систему alerting.
+
+Пример структуры:
+
+~~~json
+{
+  "timestamp": "2026-11-08T08:00:00+00:00",
+  "level": "INFO",
+  "logger": "app.main",
+  "message": "HTTP request completed",
+  "http_method": "GET",
+  "http_path": "/health/ready",
+  "http_status_code": 200,
+  "duration_ms": 4.27
+}
+~~~
+
+### OpenTelemetry tracing
+
+Трассировка FastAPI включается только при настройке <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>. Приложение использует OpenTelemetry SDK и OTLP exporter поверх gRPC. <code>OTEL_SERVICE_NAME</code> переопределяет имя сервиса; иначе берётся <code>APP_NAME</code>.
+
+Локальный пример с OpenTelemetry Collector на OTLP gRPC port:
+
+~~~sh
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
 OTEL_SERVICE_NAME=user-service \
 uv run hypercorn app.main:app --bind 127.0.0.1:8000 \
   --certfile certs/server.crt --keyfile certs/server.key
-```
+~~~
 
-Для внешнего collector настройте TLS и аутентификацию в соответствии с его
-deployment. Поддерживаемые параметры exporter, например
-`OTEL_EXPORTER_OTLP_HEADERS`, передавайте через защищённые переменные окружения.
-Не экспортируйте auth headers или request bodies; traces следует считать
-потенциально чувствительными операционными данными.
+Это локальный пример. В production используйте аутентифицированный и зашифрованный collector endpoint, ограничьте сетевой egress и проверьте, какие span attributes могут содержать идентификаторы или персональные данные.
+
+### Чего пока нет
+
+Репозиторий пока не настраивает Prometheus metrics endpoint, metrics exporter, Grafana dashboards, alert manager, централизованную log-платформу или production trace backend. OpenTelemetry tracing не равна полной observability. Определения метрик и пробелы измерений перечислены в [metrics.md](metrics.md).
+
+### Эксплуатационное применение
+
+Для разбора медленного запроса сопоставляйте path, status и duration, затем проверяйте состояние PostgreSQL/Redis и опциональные traces. Не добавляйте в логи raw payloads, пароли, токены или персональные данные. До production-развёртывания определите владельцев мониторинга, доступа к логам, retention, удаления и экспорта данных при инциденте.

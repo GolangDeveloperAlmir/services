@@ -1,299 +1,261 @@
+<div align="center">
+
+<img src="docs/assets/user-service-architecture.svg" alt="User Service architecture: administrator browser, TLS ingress, FastAPI application, PostgreSQL, Redis, read-only media catalog and optional OpenTelemetry" width="100%" />
+
 # User Service
+
+**Admin-only profile management. Explicit security boundaries. A practical Python service architecture.**
 
 [![CI](https://github.com/GolangDeveloperAlmir/services/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/GolangDeveloperAlmir/services/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/GolangDeveloperAlmir/services/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/GolangDeveloperAlmir/services/actions/workflows/codeql.yml)
-[![License: AOAL 1.0](https://img.shields.io/badge/license-AOAL%201.0-blue.svg)](LICENSE)
+[![License: AOAL 1.0](https://img.shields.io/badge/license-AOAL%201.0-5267a8.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.14%2B-3776ab.svg)](https://www.python.org/)
+[![API](https://img.shields.io/badge/API-OpenAPI-6b4fbb.svg)](openapi.yaml)
 
-> Secure, administrator-only user-profile service built with FastAPI, PostgreSQL, Redis-backed sessions, HTTPS/HTTP2, and a bilingual web console.
+[Documentation](docs/index.md) · [Architecture](docs/architecture.md) · [Technology decisions](docs/technology-stack.md) · [Roadmap](docs/roadmap.md)
 
-## Русский
+</div>
 
-User Service — FastAPI-сервис профилей с локальной аутентификацией
-администраторов, PostgreSQL, Redis-сессиями и HTTPS/HTTP2. Все CRUD-маршруты
-профилей требуют активную роль `admin`. Это не публичная identity-платформа:
-MFA, SSO/OIDC, tenant isolation и пользовательское самообслуживание не входят
-в текущий scope.
+> **Language / Язык:** [English](#english) · [Русский](#russian)
 
-**Основатель, создатель, первоначальный автор и правообладатель оригинальных
-материалов проекта:** Альмир Саитов (ALMIR, [@GolangDeveloperAlmir](https://github.com/GolangDeveloperAlmir)).
-Условия авторства, использования и атрибуции описаны в
-[AUTHORS.md](AUTHORS.md) и [LICENSE](LICENSE). Сторонние компоненты и материалы
-сохраняют собственные лицензии и уведомления.
-
-### Быстрый старт
-
-Нужны Python 3.14+, [`uv`](https://docs.astral.sh/uv/), Docker и Docker
-Compose. Создайте локальный env-файл из шаблона, установите свои случайные
-пароли (только alphanumeric для удобной сборки URL) и выпустите локальный
-self-signed сертификат:
-
-```sh
-cp -n .env.example .env
-# Замените POSTGRES_PASSWORD и REDIS_PASSWORD уникальными локальными значениями.
-make dev-certs
-make up
-```
-
-Локальный API: `https://127.0.0.1:8000`; `/docs`, `/openapi.json` и `/redoc`
-доступны только через HTTPS. Браузер будет предупреждать о self-signed
-сертификате — это ожидаемо только для разработки. Не используйте его в
-production. TLS завершается на Nginx; backend, PostgreSQL и Redis не
-публикуются напрямую на host. Приложение получает HTTP только из внутренней
-Docker-сети. Этот Compose рассчитан на локальную разработку, а не на
-production.
-
-Создайте первого администратора после старта стека:
-
-```sh
-docker compose exec app python -m app.auth.cli bootstrap-admin
-```
-
-CLI интерактивно запросит email и пароль без отображения ввода. Bootstrap
-работает только до появления первой admin-роли. Не передавайте пароли как
-аргументы командной строки.
-
-### Конфигурация и доступ
-
-Обязательные параметры: `DATABASE_URL`, `REDIS_URL`, `APP_ALLOWED_HOSTS`,
-`APP_ENV`. Production требует `APP_ENV=production`, `rediss://`, TLS в
-PostgreSQL URL и явные non-loopback hosts. Значения и лимиты перечислены в
-[документе безопасности](docs/security.md).
-
-Вход выполняется через `POST /auth/login`; ответ содержит короткоживущий
-opaque bearer-токен. Передавайте его в заголовке
-`Authorization: Bearer <token>`.
-Маршруты `/users` закрыты для неаутентифицированных и не-admin пользователей.
-Пароль можно сменить через `POST /auth/password`; отзыв/назначение admin
-требуют повторной проверки пароля.
-
-### CRUD профилей
-
-`POST /users`, `GET /users`, `GET /users/{id}`, `PATCH /users/{id}` и
-`DELETE /users/{id}` доступны только активному администратору. Создание
-профиля не создаёт пароль, credential или admin-роль. Email нормализуется
-перед проверкой уникальности и сохранением; дубликат возвращает `409`,
-отсутствующий UUID — `404`. Список ограничен 100 записями за страницу и
-сортируется по времени создания от новых к старым. PATCH принимает только
-переданные ненулевые поля `email`, `full_name`, `is_active`.
-
-Контракт запросов, ошибок и правила защиты профиля описаны в
-[документации API](docs/api.md).
-
-### Веб-панель
-
-После запуска стека откройте `https://127.0.0.1:8000/` и войдите под активной
-учётной записью администратора. Панель позволяет просматривать список
-профилей с постраничной навигацией, искать на загруженной странице, создавать
-и редактировать профиль, менять его активность и удалять его. Поиск работает
-только по текущей странице; сам API возвращает не более 25 записей на страницу
-в интерфейсе. Создание профиля не создаёт credentials или права входа.
-
-Bearer-токен хранится только в памяти открытой вкладки и не записывается в
-local storage; после перезагрузки страницы нужно войти повторно. Для локальной
-работы без Docker соберите TypeScript перед запуском: `make frontend-install`
-и `make frontend-build`. Docker image собирает frontend автоматически.
-
-### Фоны и музыка
-
-Панель предлагает анимированные CSS-заглушки для мегаполиса, природы, океана,
-пляжа и аниме-вдохновлённой сцены, переключатель RU/EN и управление анимацией.
-Реальных изображений/музыки в репозитории нет. Администратор может выбрать
-защищённый API-каталог или файл из браузера. Локальные файлы не отправляются
-на сервер; API-каталог доступен только авторизованным администраторам.
-
-Каталог оператора находится в `media/backgrounds/{city,nature,ocean,beach,anime}`
-и `media/music/ambient`; поддерживаются JPG/JPEG, PNG, WebP, MP3, OGG и WAV,
-до 15 MiB на файл. Добавляйте только медиа с проверенными правами использования.
-Endpoint загрузки и worker обработки пользовательских файлов пока отключены;
-не подключайте недоверенный каталог на запись. Ограничения, поведение и
-будущая спецификация обработки описаны в [docs/media.md](docs/media.md) и
-[docs/roadmap/05-media-pipeline.md](docs/roadmap/05-media-pipeline.md).
-
-### Разработка и проверки
-
-```sh
-uv sync --locked --all-groups
-make frontend-install
-make frontend-build
-make check
-make validate-specs
-make architecture
-```
-
-Для локального запуска без Compose: скопируйте `.env.example` в `.env`,
-настройте PostgreSQL и Redis, выполните `make dev-certs`,
-`uv run alembic upgrade head`, затем `make run`. Все проверки безопасности и
-настройка локальных секретов описаны в [docs/security.md](docs/security.md).
-
-Нагрузочные тесты разрешены только на localhost/loopback и disposable `_test`
-базе. Они требуют `PERF_AUTH_TOKEN`; инструкция и пределы есть в
-[docs/performance.md](docs/performance.md).
-
-### Документация
-
-Начните с [индекса документации](docs/index.md): [архитектура](docs/architecture.md),
-[модель данных и ER-диаграммы](docs/data-model.md), [HTTP API](docs/api.md),
-[безопасность](docs/security.md), [медиа](docs/media.md),
-[наблюдаемость](docs/observability.md),
-[нагрузочные проверки](docs/performance.md), [обзор продукта](docs/product-overview.md),
-[план развития и будущие ТЗ](docs/roadmap.md),
-[участие в разработке](CONTRIBUTING.md), [политика раскрытия](SECURITY.md),
-[авторство и правообладание](AUTHORS.md) и
-[инструкции для AI-агентов](AGENTS.md).
-
-### Лицензия и поддержка
-
-Проект распространяется по собственной лицензии
-[Almir Open Attribution License (AOAL) 1.0](LICENSE): использование,
-изменение, коммерческое распространение и форки разрешены при сохранении
-атрибуции автора и ссылки на первоисточник. Учитывайте отдельные лицензии
-сторонних компонентов; AOAL является собственной, не стандартной лицензией.
-См. также [правила сообщества](CODE_OF_CONDUCT.md),
-[поддержку](SUPPORT.md) и [цитирование проекта](CITATION.cff).
-
+<a id="english"></a>
 ## English
 
-User Service is a FastAPI profile service with local administrator
-authentication, PostgreSQL, Redis-backed sessions, and HTTPS/HTTP2. Every
-profile CRUD route requires an active `admin` role. It is not a public identity
-platform: MFA, SSO/OIDC, tenant isolation, and end-user self-service are out of
-scope.
+User Service is a deliberately focused backend for managing user profiles through an administrator-only HTTP API. It combines FastAPI, PostgreSQL, Redis-backed administrator sessions, a small TypeScript web console, and a containerized local environment.
 
-**Project founder, creator, original author, and rights holder for original
-project materials:** Almir Saitov (ALMIR,
-[@GolangDeveloperAlmir](https://github.com/GolangDeveloperAlmir)). Authorship,
-reuse, and attribution terms are described in [AUTHORS.md](AUTHORS.md) and
-[LICENSE](LICENSE). Third-party components and materials retain their own
-licenses and notices.
+The project favours a narrow, inspectable security model over an oversized feature list: profile data is not an identity credential, creating a profile does not grant login access, and every profile operation requires an active administrator.
+
+### At a glance
+
+| Area | Current implementation |
+| --- | --- |
+| Product | Administrator-operated user-profile service |
+| API | FastAPI, HTTPS, generated OpenAPI |
+| Runtime | Python 3.14+, Hypercorn |
+| Persistence | PostgreSQL 16, SQLAlchemy async, Alembic |
+| Sessions and rate limits | Redis 7, opaque short-lived bearer sessions |
+| Password storage | Argon2id via argon2-cffi |
+| Web console | TypeScript 5.9.3, HTML and CSS |
+| Local environment | Docker Compose, Nginx TLS ingress |
+| Quality gates | pytest, Ruff, Import Linter, Bandit, pip-audit, CodeQL and workflow checks |
+| Telemetry | JSON request logs; optional OpenTelemetry traces over OTLP |
+
+### Why this project exists
+
+Many small services begin with a profile table and gradually accumulate authentication, roles, media, operations and deployment logic without clearly defined boundaries. User Service keeps those concerns visible and deliberately limits what the current product promises.
+
+- **Profiles are not accounts.** A profile can exist without credentials or a role.
+- **Administration is explicit.** The built-in role is <code>admin</code>; profile endpoints are not public.
+- **PostgreSQL is authoritative.** Account and role state live in the database; Redis stores expiring session state and rate counters.
+- **The local environment is inspectable.** Nginx, the application, PostgreSQL and Redis run in separate Compose services and networks.
+- **Roadmap is not reality.** Planned identity, tenant and media features are labelled as proposals, not shipped functionality.
+
+### Current capabilities
+
+| Capability | What is implemented |
+| --- | --- |
+| Administrator authentication | Local login, logout, identity lookup and password rotation |
+| Administrator lifecycle | Protected role grant/revocation with reauthentication and last-admin safeguards |
+| Profile CRUD | Create, list, read, update and delete, restricted to active administrators |
+| Data integrity | UUID identifiers, normalized unique email, bounded deterministic pagination |
+| Web console | Administrator sign-in and profile management on the same HTTPS origin |
+| Curated media | Read-only operator-managed catalog; browser-local file selection never uploads |
+| Health | Liveness and readiness endpoints |
+| Engineering controls | Automated tests, architecture checks, dependency/security checks and contract validation |
+
+### Scope boundaries
+
+This is **not** currently a public identity platform or a production-as-a-service offering. The repository does not implement end-user registration or self-service, tenant isolation, MFA, SSO/OIDC, account recovery, user-media upload, a media-processing worker, or a production deployment runbook with approved SLOs. These subjects may appear in the roadmap, but a specification is not a deployed feature.
 
 ### Quick start
 
-Requirements: Python 3.14+, [`uv`](https://docs.astral.sh/uv/), Docker, and
-Docker Compose. Copy the environment template, set unique random local
-passwords (alphanumeric values simplify the database URL), and create a local
-self-signed certificate:
+Requirements: Python 3.14+, [uv](https://docs.astral.sh/uv/), Docker with Compose, and Node.js/npm only when building the frontend outside Docker.
 
-```sh
+~~~sh
 cp -n .env.example .env
-# Replace POSTGRES_PASSWORD and REDIS_PASSWORD with unique local values.
+# Replace POSTGRES_PASSWORD and REDIS_PASSWORD with unique local secrets.
 make dev-certs
 make up
-```
+~~~
 
-Local API: `https://127.0.0.1:8000`; `/docs`, `/openapi.json`, and `/redoc`
-are HTTPS-only. TLS terminates at Nginx; the backend, PostgreSQL, and Redis
-are not published directly to the host. The application receives HTTP only
-from the internal Docker network. This Compose stack is for local development,
-not production. Browsers will warn about the self-signed certificate; never
-use it in production.
+Open [https://127.0.0.1:8000](https://127.0.0.1:8000). The local self-signed certificate is expected to trigger a browser warning. It is for development only and must not be reused in production.
 
-Create the first administrator after the stack is ready:
+Create the first administrator:
 
-```sh
+~~~sh
 docker compose exec app python -m app.auth.cli bootstrap-admin
-```
+~~~
 
-The CLI prompts for the email and password without echoing the password.
-Bootstrap works only until an administrator role exists. Never pass passwords
-as command-line arguments.
+The CLI prompts for the email and password without echoing the password. Bootstrap is available only while no administrator role exists. Do not put credentials in shell history or command-line arguments.
 
-### Configuration and access
+### Development checks
 
-Required settings are `DATABASE_URL`, `REDIS_URL`, `APP_ALLOWED_HOSTS`, and
-`APP_ENV`. Production requires `APP_ENV=production`, `rediss://`, TLS in the
-PostgreSQL URL, and explicit non-loopback hosts. See
-[security documentation](docs/security.md) for all settings and controls.
-
-Authenticate with `POST /auth/login`; the response contains a short-lived
-opaque bearer token. Send it as `Authorization: Bearer <token>`. `/users` routes
-reject unauthenticated and non-admin callers. Change a password at
-`POST /auth/password`; administrator role changes require password
-reauthentication.
-
-### Profile CRUD
-
-`POST /users`, `GET /users`, `GET /users/{id}`, `PATCH /users/{id}`, and
-`DELETE /users/{id}` are restricted to active administrators. Creating a
-profile does not create a password, local credential, or admin role. Email is
-normalized before uniqueness checks and persistence; duplicates return `409`,
-and unknown UUIDs return `404`. Listing is capped at 100 records per page and
-ordered newest first. PATCH accepts only supplied, non-null `email`,
-`full_name`, and `is_active` fields.
-
-See the [API documentation](docs/api.md) for request contracts, errors, and
-profile safety rules.
-
-### Web console
-
-After starting the stack, open `https://127.0.0.1:8000/` and sign in with an
-active administrator account. The console lists profiles with pagination,
-searches the loaded page, and supports create, edit, activate/deactivate, and
-delete actions. Search is limited to the current page; the UI requests up to
-25 records per page. Creating a profile does not create credentials or grant
-login access.
-
-The bearer token stays in the current tab's memory and is not written to local
-storage; re-authenticate after reloading the page. For a non-Docker local run,
-build TypeScript with `make frontend-install` and `make frontend-build`. Docker
-builds the frontend automatically.
-
-### Backgrounds and music
-
-The console offers animated CSS placeholder scenes for city, nature, ocean,
-beach, and anime-inspired styles, a RU/EN language switch, and a motion
-control. No actual image or music assets are bundled. Administrators can use
-the protected API catalog or choose a browser-local file. Local files are
-never uploaded; the API catalog requires administrator authentication.
-
-The operator-managed catalog lives under
-`media/backgrounds/{city,nature,ocean,beach,anime}` and `media/music/ambient`.
-Supported formats are JPG/JPEG, PNG, WebP, MP3, OGG, and WAV, up to 15 MiB per
-file. Add only media with verified usage rights. Upload endpoints and a worker
-for user files are not implemented; do not mount an untrusted writable media
-directory. See [docs/media.md](docs/media.md) and the future
-[media-pipeline specification](docs/roadmap/05-media-pipeline.md).
-
-### Development and checks
-
-```sh
+~~~sh
 uv sync --locked --all-groups
 make frontend-install
 make frontend-build
 make check
 make validate-specs
 make architecture
-```
+~~~
 
-For a non-Compose local run, copy `.env.example` to `.env`, configure
-PostgreSQL/Redis, run `make dev-certs` and `uv run alembic upgrade head`, then
-`make run`. Security checks and local secret handling are documented in
-[docs/security.md](docs/security.md).
+<code>make check</code> runs lint/format checks, tests, architecture validation, contract validation, security tooling and frontend type checking. Docker-based checks require Docker; the performance suite is loopback-only and uses a disposable test database.
 
-Load tests are restricted to localhost/loopback and a disposable `_test`
-database. They require `PERF_AUTH_TOKEN`; see
-[docs/performance.md](docs/performance.md) for setup and limits.
+### Explore the project
 
-### Documentation
+| Start here | You will find |
+| --- | --- |
+| [Documentation index](docs/index.md) | Curated reading paths for developers, operators and reviewers |
+| [Product overview](docs/product-overview.md) | Value proposition, audience, capabilities and limitations |
+| [Architecture](docs/architecture.md) | Runtime topology, trust boundaries and module dependencies |
+| [HTTP API](docs/api.md) | Authentication, profile and media endpoints, status codes |
+| [Data model](docs/data-model.md) | PostgreSQL entities and relationships |
+| [Security](docs/security.md) | Threat boundaries, authentication controls and operational caveats |
+| [Technology decisions](docs/technology-stack.md) | Why each major technology is used, alternatives and trade-offs |
+| [Glossary](docs/glossary.md) | Shared vocabulary and acronym definitions |
+| [Observability](docs/observability.md) | Structured logs and optional tracing |
+| [Performance](docs/performance.md) | Safe local load testing and interpretation |
+| [Metrics](docs/metrics.md) | Repository facts, measurement definitions and baseline status |
+| [Roadmap](docs/roadmap.md) | Proposed initiatives and decision gates |
+| [Documentation standard](docs/documentation-standard.md) | Bilingual writing, translation and diagram conventions |
 
-Start at the [documentation index](docs/index.md): [architecture](docs/architecture.md),
-[data model and ER diagrams](docs/data-model.md), [HTTP API](docs/api.md),
-[security](docs/security.md), [media](docs/media.md),
-[observability](docs/observability.md),
-[load testing](docs/performance.md), [product overview](docs/product-overview.md),
-[proposed roadmap and future specifications](docs/roadmap.md),
-[contributing](CONTRIBUTING.md), [responsible disclosure](SECURITY.md),
-[authorship and ownership](AUTHORS.md), and
-[AI agent guidance](AGENTS.md).
+### Project snapshot
 
-The roadmap is a planning document, not a feature or delivery commitment.
-Its detailed technical specifications are currently maintained in Russian.
+<sub>Static repository inventory captured on 2026-11-08. These figures describe checked-in files, not live usage or production performance.</sub>
 
-### License and support
+| Indicator | Snapshot |
+| --- | ---: |
+| Tracked files | 140 |
+| Automated test modules | 10 |
+| Detailed roadmap specifications | 5 |
+| Compose runtime services | 4 |
+| Published production SLOs | Not established |
+| Published benchmark baseline | Not established |
 
-This project is distributed under the custom
-[Almir Open Attribution License (AOAL) 1.0](LICENSE). Use, modification,
-commercial distribution, and forks are permitted when author attribution and
-the original source link are retained. Third-party components may have
-separate licenses; AOAL is a custom, non-standard license. See the
-[Code of Conduct](CODE_OF_CONDUCT.md),
-[support guide](SUPPORT.md), and [citation metadata](CITATION.cff).
+CI and CodeQL badges link to their live GitHub workflows. Stars, downloads, uptime, throughput and latency are intentionally not presented as marketing statistics without measurements.
+
+### Ownership and license
+
+The project founder, original creator, maintainer and rights holder for original project materials is **Almir Saitov** ([@GolangDeveloperAlmir](https://github.com/GolangDeveloperAlmir)). The repository uses the custom **Almir Open Attribution License (AOAL) 1.0**. Review [AUTHORS.md](AUTHORS.md) and [LICENSE](LICENSE) for attribution and reuse conditions. Third-party dependencies and externally sourced assets remain subject to their own licenses.
+
+---
+
+<a id="russian"></a>
+## Русский
+
+User Service — намеренно узкоспециализированный backend для управления пользовательскими профилями через HTTP API, доступный только администраторам. В основе проекта FastAPI, PostgreSQL, сессии администратора в Redis, небольшая веб-панель на TypeScript и контейнерное локальное окружение.
+
+Проект предпочитает ограниченную и понятную модель доступа длинному списку функций: профиль не является учётной записью, создание профиля не выдаёт права входа, а любая операция над профилями требует активную роль администратора.
+
+### Кратко о проекте
+
+| Область | Текущая реализация |
+| --- | --- |
+| Продукт | Сервис профилей под управлением администратора |
+| API | FastAPI, HTTPS, генерируемый OpenAPI |
+| Runtime | Python 3.14+, Hypercorn |
+| Хранение | PostgreSQL 16, SQLAlchemy async, Alembic |
+| Сессии и лимиты | Redis 7, короткоживущие opaque bearer-сессии |
+| Хеширование паролей | Argon2id через argon2-cffi |
+| Веб-панель | TypeScript 5.9.3, HTML и CSS |
+| Локальная среда | Docker Compose, Nginx TLS ingress |
+| Контроль качества | pytest, Ruff, Import Linter, Bandit, pip-audit, CodeQL и проверки workflow |
+| Телеметрия | JSON-логи HTTP-запросов; опциональные OpenTelemetry traces через OTLP |
+
+### Зачем существует проект
+
+Небольшие сервисы часто начинают с таблицы профилей, а затем незаметно обрастают аутентификацией, ролями, медиа, эксплуатацией и логикой развёртывания. User Service делает эти границы явными и не обещает того, чего в коде ещё нет.
+
+- **Профиль не равен аккаунту.** Запись профиля может существовать без credentials и роли.
+- **Администрирование не подразумевается автоматически.** Встроенная роль одна — <code>admin</code>; публичного доступа к профилям нет.
+- **PostgreSQL является источником истины.** Состояние аккаунтов и ролей хранится в БД, Redis содержит временные сессии и счётчики ограничений.
+- **Локальное окружение прозрачно.** Nginx, приложение, PostgreSQL и Redis работают отдельными Compose-сервисами и сетями.
+- **План развития не является текущей реализацией.** Будущие identity-, tenant- и media-функции помечаются как предложения.
+
+### Что уже работает
+
+| Возможность | Реализация |
+| --- | --- |
+| Аутентификация администратора | Локальный вход, выход, получение identity и смена пароля |
+| Жизненный цикл администратора | Защищённое назначение/отзыв роли с повторной проверкой пароля и защитой последнего администратора |
+| CRUD профилей | Создание, список, чтение, обновление и удаление только активным администраторам |
+| Целостность данных | UUID, нормализация уникального email, ограниченная детерминированная пагинация |
+| Веб-панель | Вход администратора и управление профилями с того же HTTPS origin |
+| Каталог медиа | Read-only каталог оператора; локальный выбор файла в браузере не означает загрузку |
+| Health | Liveness- и readiness-endpoints |
+| Инженерные проверки | Автотесты, проверки архитектуры, зависимостей, безопасности и API-контрактов |
+
+### Границы продукта
+
+На данный момент это **не** публичная Identity-платформа и не готовый управляемый production-сервис. В репозитории нет пользовательской регистрации и self-service, изоляции арендаторов, MFA, SSO/OIDC, восстановления аккаунта, загрузки пользовательских медиа, worker обработки файлов или утверждённого production runbook с SLO. Эти темы могут находиться в roadmap, но спецификация ещё не делает функцию доступной.
+
+### Быстрый запуск
+
+Требуются Python 3.14+, [uv](https://docs.astral.sh/uv/), Docker с Compose и Node.js/npm только для самостоятельной сборки frontend вне Docker.
+
+~~~sh
+cp -n .env.example .env
+# Замените POSTGRES_PASSWORD и REDIS_PASSWORD уникальными локальными секретами.
+make dev-certs
+make up
+~~~
+
+Откройте [https://127.0.0.1:8000](https://127.0.0.1:8000). Локальный self-signed сертификат вызовет предупреждение браузера. Он предназначен только для разработки и не должен использоваться в production.
+
+Создайте первого администратора:
+
+~~~sh
+docker compose exec app python -m app.auth.cli bootstrap-admin
+~~~
+
+CLI запросит email и пароль интерактивно, не отображая пароль. Bootstrap доступен только пока в системе нет роли администратора. Не помещайте credentials в историю shell или аргументы командной строки.
+
+### Проверки разработки
+
+~~~sh
+uv sync --locked --all-groups
+make frontend-install
+make frontend-build
+make check
+make validate-specs
+make architecture
+~~~
+
+<code>make check</code> запускает lint/format, тесты, проверку архитектуры, API-контрактов, инструменты безопасности и проверку типов frontend. Для Docker-проверок нужен Docker; нагрузочный набор работает только через loopback и использует отдельную тестовую БД.
+
+### Куда идти дальше
+
+| Документ | Что внутри |
+| --- | --- |
+| [Индекс документации](docs/index.md) | Маршруты чтения для разработчика, оператора и ревьюера |
+| [Обзор продукта](docs/product-overview.md) | Ценность, аудитория, возможности и границы |
+| [Архитектура](docs/architecture.md) | Топология, границы доверия и зависимости модулей |
+| [HTTP API](docs/api.md) | Аутентификация, профили, медиа и коды ответов |
+| [Модель данных](docs/data-model.md) | Сущности PostgreSQL и связи |
+| [Безопасность](docs/security.md) | Границы угроз, механизмы аутентификации и эксплуатационные оговорки |
+| [Выбор технологий](docs/technology-stack.md) | Причины выбора, альтернативы, преимущества и риски |
+| [Глоссарий](docs/glossary.md) | Единая терминология и расшифровка сокращений |
+| [Наблюдаемость](docs/observability.md) | Структурированные логи и опциональная трассировка |
+| [Производительность](docs/performance.md) | Безопасное локальное тестирование нагрузки |
+| [Метрики](docs/metrics.md) | Факты репозитория, определения измерений и состояние baseline |
+| [План развития](docs/roadmap.md) | Предложения и точки принятия решений |
+| [Стандарт документации](docs/documentation-standard.md) | Двуязычный текст, перевод и правила диаграмм |
+
+### Снимок проекта
+
+<sub>Статическая инвентаризация репозитория на 2026-11-08. Эти числа описывают файлы в Git, а не активность пользователей или production-производительность.</sub>
+
+| Показатель | Состояние |
+| --- | ---: |
+| Отслеживаемые файлы | 134 |
+| Модули автоматических тестов | 10 |
+| Подробные спецификации roadmap | 5 |
+| Группы runtime-сервисов в Compose | 4 |
+| Опубликованные production SLO | Не установлены |
+| Опубликованный benchmark baseline | Не установлен |
+
+Значки CI и CodeQL ведут на реальные GitHub workflows. Stars, загрузки, uptime, throughput и latency не используются как рекламные цифры без измерений.
+
+### Авторство и лицензия
+
+Основатель, первоначальный создатель, сопровождающий и правообладатель оригинальных материалов проекта — **Альмир Саитов** ([@GolangDeveloperAlmir](https://github.com/GolangDeveloperAlmir)). Репозиторий использует собственную лицензию **Almir Open Attribution License (AOAL) 1.0**. Условия атрибуции и повторного использования описаны в [AUTHORS.md](AUTHORS.md) и [LICENSE](LICENSE). Сторонние зависимости и внешние материалы сохраняют собственные лицензии.

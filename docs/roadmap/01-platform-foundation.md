@@ -1,207 +1,100 @@
-# 01. Платформенная и эксплуатационная основа
+# PLAN-01: Platform and operational foundation
 
-> **Статус:** будущее ТЗ (`PLAN-01`), не описание уже доступного production
-> deployment. Реализация начинается после `PLAN-00` и выбора среды эксплуатации.
+> **Language / Язык:** [English](#english) · [Русский](#russian)
+> **Status:** future specification, not an existing production deployment.
 
-## 1. Цель
+<a id="english"></a>
+## English
 
-Подготовить сервис к ограниченному production/pilot запуску так, чтобы
-владелец мог безопасно развернуть, наблюдать, резервировать, восстанавливать
-и обновлять его. Текущие требования к TLS PostgreSQL/Redis, allow-hosts и
-health endpoints — необходимые контроли, но сами по себе не составляют
-проверенную production-процедуру.
+### Goal and scope
 
-## 2. В scope
+Prepare the service for a controlled pilot/production deployment that can be operated, monitored, backed up, restored and upgraded safely. Existing PostgreSQL/Redis TLS checks, allowed-host validation and health endpoints are necessary controls, but they do not constitute a tested production operating model.
 
-1. Зафиксировать поддерживаемую топологию: точка TLS termination, private
-   network, доступ к PostgreSQL/Redis, допустимая proxy trust boundary.
-2. Формализовать раздельные настройки local/test/staging/production и
-   проверить, что production не стартует на development credentials,
-   self-signed сертификате или wildcard host.
-3. Описать секреты и сертификаты: источник, права, ротация, отзыв,
-   восстановление и запрет передачи через image/build context или логи.
-4. Определить порядок выпуска: сборка неизменяемого image, provenance/
-   SBOM-подход при необходимости, сканирование, миграции, health checks,
-   переключение трафика и rollback.
-5. Утвердить резервирование PostgreSQL, срок хранения копий, шифрование,
-   доступ, регулярную проверку восстановления и отдельно описать эфемерность
-   Redis-сессий.
-6. Установить privacy-политику аудита и логов; только после согласования
-   внедрять очистку, экспорт или архивирование.
-7. Определить минимальные эксплуатационные сигналы, оповещения и
-   incident-response runbooks.
+The initiative covers deployment and trust boundaries; environment separation; secrets and certificate lifecycle; immutable-image releases and migration gates; PostgreSQL backup and restore; audit/privacy/retention policy; baseline observability, alert ownership and incident runbooks.
 
-## 3. Не входит без отдельного ADR
+### Explicit non-goals without a separate ADR
 
-- Выбор конкретного cloud-провайдера, Kubernetes, service mesh или managed
-  продукта.
-- Multi-region active-active и гарантии нулевого простоя.
-- Автоматическая ротация ключей/сертификатов, пока не выбран механизм
-  secret/certificate management.
-- Юридическое заключение о GDPR/локальном законодательстве или
-  сертификация соответствия.
-- Любые численные SLO, RPO, RTO, retention и paging thresholds без владельца
-  и подтверждения бизнес-потребности.
+No default cloud provider, Kubernetes, service mesh, managed product, active-active multi-region, zero-downtime guarantee, automatic certificate rotation, legal-compliance certification or numeric SLO/RPO/RTO/retention target is assumed.
 
-## 4. Требования и проектирование
+### Proposed release flow
 
-### 4.1 Среды и границы доверия
+~~~mermaid
+flowchart TD
+    A["PR: tests, architecture, API and security gates"] --> B["Build immutable image from reviewed commit"]
+    B --> C["Deploy to staging with production-like configuration"]
+    C --> D["Migrate forward and run smoke/health/security checks"]
+    D --> E{"Approval and stop conditions satisfied?"}
+    E -->|Yes| F["Controlled pilot / rollout"]
+    E -->|No| G["Stop rollout; investigate and recover"]
+    F --> H["Observe, record evidence and review"]
+~~~
 
-Составить схему потоков и таблицу входящих/исходящих соединений: субъект,
-протокол, порт, сторона TLS, аутентификация, допустимое назначение и
-содержащиеся данные. Указать, какие headers от reverse proxy считаются
-доверенными и как настроен allowlist адресов прокси. До завершения этого
-решения приложение продолжает не доверять произвольным `X-Forwarded-*`.
+Migration planning must separate expand, backfill, validate and contract for long-running changes. Do not promise automatic downgrade for destructive or irreversible migrations.
 
-Для каждой среды описать:
+### Work packages and exit evidence
 
-- источник конфигурации и секретов;
-- доступ к API и административным интерфейсам;
-- сетевые правила для API, PostgreSQL, Redis, collector и artifact registry;
-- допустимые логи/трейсы и место их хранения;
-- запрет использования production-данных и токенов в dev/test;
-- владельца и процедуру выдачи/отзыва доступа.
-
-### 4.2 Выпуск и миграции
-
-Предлагаемый pipeline:
-
-1. PR gate: unit/integration тесты, architecture, OpenAPI/AsyncAPI,
-   dependency/SAST/secret/container scans.
-2. Сборка image из проверенного commit; image получает уникальную immutable
-   ссылку, не перезаписываемый `latest` как единственный идентификатор.
-3. Развёртывание в staging на конфигурации, приближённой к production;
-   smoke, health, миграция вперёд, основные auth/CRUD сценарии.
-4. Production approval, резервная копия/проверка миграционного окна,
-   постепенное включение или ограниченный пилот, мониторинг и явный stop
-   condition.
-5. При сбое — остановить rollout; выполнять только проверенный обратимый
-   кодовый rollback. Для необратимого изменения данных использовать
-   forward-fix/restore runbook, а не обещать автоматический downgrade.
-
-Миграции должны быть повторяемыми и транзакционно безопасными там, где это
-поддерживает PostgreSQL. Для длительных преобразований данных отделить
-расширение схемы, backfill, валидацию и удаление старых структур. Отдельно
-записывать блокировки, объём данных, время выполнения на копии и критерий
-безопасного продолжения.
-
-### 4.3 Резервное копирование и восстановление
-
-До выбора продукта определить:
-
-- какие данные входят в backup и что восстанавливается из повторно созданной
-  конфигурации;
-- требования к шифрованию, географии, доступу и retention копий;
-- приемлемые RPO/RTO владельца продукта;
-- порядок восстановления в изолированное окружение, проверки целостности и
-  переключения;
-- действия при ошибочном удалении, повреждении, утечке backup и
-  несовместимой миграции.
-
-Критерии для процедуры:
-
-- расписание и результат backup наблюдаемы; неуспех вызывает alert;
-- восстановление выполняется по инструкции без доступа к исходному
-  production instance;
-- после restore проверяются Alembic revision, количества/инварианты данных,
-  авторизация и критические API workflows;
-- результат, длительность, найденные пробелы и владелец устранения
-  фиксируются; периодичность учений задаётся после согласования критичности.
-
-Redis рассматривается как эфемерное хранилище согласно текущему дизайну:
-потеря Redis завершает действующие сессии и сбрасывает rate-limit state.
-Runbook должен учитывать безопасную повторную аутентификацию и отдельно
-оценивать последствия сброса rate counters.
-
-### 4.4 Аудит, приватность и retention
-
-До технической автоматизации владелец данных должен утвердить:
-
-- перечень событий и бизнес-цель каждого события;
-- поля события, включая необходимость source IP;
-- срок онлайн-хранения, срок архива и процедуру удаления;
-- роли чтения, выгрузки, расследования и настройки retention;
-- требования legal hold, privacy request и резервных копий;
-- контроль целостности и уведомление при невозможности записать обязательное
-  событие.
-
-ТЗ для реализации после утверждения: минимизация полей; отсутствие паролей,
-bearer-токенов, секретов и тел запросов; ограниченный доступ; ограничение
-экспорта; идемпотентная очистка; измеримые счётчики результата; тесты границ
-срока и защиты от удаления события, необходимого активному расследованию.
-Не добавлять failed-login audit без оценки персональных данных, объёма и
-возможности abuse через раздувание журнала.
-
-### 4.5 Наблюдаемость и поддержка
-
-Сначала собрать baseline в staging/pilot, затем согласовать сигналы и
-пороговые значения. Минимальный набор для проектирования:
-
-- доступность процесса и readiness зависимостей;
-- частота запросов, доля ошибок по классам статусов и latency percentile по
-  ограниченному набору endpoint groups;
-- длительность/ошибки запросов к PostgreSQL и состояние пула;
-- доступность Redis и ошибки session/rate-limit операций;
-- результат/длительность миграции, backup и restore drill;
-- auth/security counters без email, токенов, IP-меток высокой cardinality
-  или иных персональных значений в labels.
-
-Для каждого сигнала описать источник, единицы, labels, cardinality cap,
-retention, доступ, владелец alert, способ подавления шума и playbook. Traces
-проверить на отсутствие чувствительных headers, query strings и request
-bodies. Не выдавать readiness endpoint за проверку всех внешних возможностей
-или пользовательской доступности.
-
-Обязательные runbooks для пилота: недоступна БД/Redis; исчерпан пул соединений;
-ошибочная миграция; утечка/ротация секрета; восстановление backup; потеря
-всех администраторских credentials; массовые ошибки аутентификации;
-неожиданный рост latency/ошибок; подозрение на межтенантный доступ (если
-multi-tenant одобрен).
-
-## 5. Этапы работ и выходные артефакты
-
-| Подэтап | Работа | Артефакт / критерий выхода |
+| Package | Work | Exit evidence |
 | --- | --- | --- |
-| `01-A` Инвентаризация | Выбрать сценарий deployment, data classification, владельцев и threat model | ADR и схема доверия утверждены; неизвестные вопросы назначены владельцам |
-| `01-B` Операционная модель | Определить secrets, TLS, сети, release, доступ и support ownership | Deployment/runbook без production-секретов и неоднозначных ручных шагов |
-| `01-C` Recovery | Согласовать RPO/RTO/retention и проверить backup/restore | Подписанный результат restore drill и список исправлений |
-| `01-D` Audit/privacy | Утвердить события, поля, сроки и доступ | Таблица политики; план реализации/очистки, соответствующий политике |
-| `01-E` Signals | Снять baseline, определить SLI/SLO и alerts | Дашборд/сигналы, утверждённые пороги и проверенные playbooks |
-| `01-F` Release gate | Проверить pipeline и staging rollout с миграцией | Повторяемый staging release, stop/rollback условия и evidence |
+| 01-A Inventory | Deployment scenario, data classification, owners and threat model | Approved ADRs and trust-boundary diagram |
+| 01-B Operating model | Secrets, TLS, networks, releases, access and support ownership | Repeatable deployment/runbook with no production secrets |
+| 01-C Recovery | Backup scope, RPO/RTO and restore procedure | Witnessed restore drill and remediation list |
+| 01-D Audit/privacy | Events, fields, access and retention | Approved policy and implementation plan |
+| 01-E Signals | Baseline, SLI/SLO, alerts and cardinality controls | Owned signals and validated playbooks |
+| 01-F Release gate | Staging release and migration exercise | Repeatable release with stop/rollback criteria |
 
-## 6. Критерии приёмки
+### Acceptance criteria
 
-- Чётко указан владелец каждой среды, данных, секретов и production инцидента.
-- Секреты и реальные данные отсутствуют в Git, image layers, CI logs и
-  telemetry; это проверяется существующими и целевыми gates.
-- Схема сетевых доверительных границ согласована, в том числе поведение за
-  proxy/TLS terminator.
-- Миграция проходит на тестовой копии; есть решение, что делать при
-  несовместимом rollback.
-- Backup не считается готовым, пока restore не выполнен и критические
-  инварианты не проверены.
-- Retention не запускается, пока нет утверждённой политики и теста точных
-  граничных случаев.
-- Каждый production alert имеет владельца и диагностический runbook; значения
-  порогов подтверждены данными.
-- Staging release может быть остановлен без неоговорённого изменения
-  пользовательских данных.
-- Изменения отражены в `docs/security.md`, `docs/observability.md`,
-  `docs/architecture.md`, `CONTRIBUTING.md` и deployment/runbook документации,
-  если они появятся.
+Every environment, data set, secret class and production incident has an owner. Secrets and production data are absent from Git, images, CI logs and telemetry. Proxy/TLS/network trust boundaries are documented. Migrations run against a representative copy. Backups are accepted only after restore and validation of schema revision, data invariants, authentication and critical API flows. Audit retention is not automated until a privacy policy is approved. Each alert has an owner and evidence-based threshold. Staging can be stopped without undocumented data mutation. Security, architecture, observability and deployment docs are updated with implementation.
 
-## 7. Неопределённости и риски
+### Open decisions and risks
 
-Нужно выбрать deployment platform, secret manager, место хранения telemetry,
-audit retention, backup destination и ответственного за 24/7 поддержку (если
-она требуется). На момент написания репозиторий не фиксирует эти решения;
-эта спецификация не подразумевает конкретный инфраструктурный стек.
+Deployment platform, secret manager, telemetry destination, audit retention, backup destination and on-call model remain undecided. Redis is currently ephemeral: loss invalidates sessions and resets rate counters; recovery instructions must cover safe reauthentication. Production readiness must not be inferred from local Compose.
 
-## English summary
+---
 
-`PLAN-01` defines future production operations: deployment and trust
-boundaries, secrets/TLS, release and migration gates, tested PostgreSQL
-recovery, approved audit retention, baseline observability, and runbooks.
-Provider choices and numeric SLO/RPO/RTO/retention remain undecided until
-owners approve them. No production deployment capability is implied by this
-specification.
+<a id="russian"></a>
+## Русский
+
+### Цель и scope
+
+Подготовить сервис к контролируемому pilot/production-развёртыванию, которое можно безопасно эксплуатировать, наблюдать, резервировать, восстанавливать и обновлять. Существующие проверки TLS PostgreSQL/Redis, allowed hosts и health endpoints необходимы, но сами по себе не образуют проверенную production-модель.
+
+Инициатива охватывает deployment и границы доверия; разделение сред; lifecycle secrets и сертификатов; immutable-image releases и migration gates; backup/restore PostgreSQL; политику audit/privacy/retention; baseline observability, владельцев alert и incident runbooks.
+
+### Явные не-цели без отдельного ADR
+
+Не предполагается выбор cloud-провайдера, Kubernetes, service mesh, managed-продукта, active-active multi-region, гарантии zero downtime, автоматической ротации сертификатов, юридической сертификации или численных SLO/RPO/RTO/retention.
+
+### Предлагаемый release flow
+
+~~~mermaid
+flowchart TD
+    A["PR: tests, architecture, API и security gates"] --> B["Сборка immutable image из reviewed commit"]
+    B --> C["Staging с production-like конфигурацией"]
+    C --> D["Forward migration и smoke/health/security checks"]
+    D --> E{"Approval и stop conditions выполнены?"}
+    E -->|Да| F["Контролируемый pilot / rollout"]
+    E -->|Нет| G["Остановить rollout, расследовать и восстановить"]
+    F --> H["Наблюдать, фиксировать evidence и пересматривать"]
+~~~
+
+План длительных миграций должен разделять expand, backfill, validate и contract. Не обещайте автоматический downgrade для destructive или необратимых изменений.
+
+### Пакеты работ и доказательства выхода
+
+| Пакет | Работа | Доказательство выхода |
+| --- | --- | --- |
+| 01-A Inventory | Сценарий deployment, классификация данных, владельцы и threat model | Утверждённые ADR и схема границ доверия |
+| 01-B Operating model | Secrets, TLS, сети, releases, доступ и поддержка | Повторяемый deployment/runbook без production-секретов |
+| 01-C Recovery | Backup scope, RPO/RTO и restore | Проверенное упражнение restore и список исправлений |
+| 01-D Audit/privacy | События, поля, доступ и retention | Утверждённая политика и план реализации |
+| 01-E Signals | Baseline, SLI/SLO, alerts и cardinality controls | Сигналы с владельцами и проверенные playbook |
+| 01-F Release gate | Staging release и миграционное упражнение | Повторяемый выпуск со stop/rollback критериями |
+
+### Критерии приёмки
+
+Для каждой среды, набора данных, класса секретов и production-инцидента назначен владелец. Секреты и production-данные отсутствуют в Git, images, CI logs и telemetry. Proxy/TLS/network trust boundaries документированы. Миграции проходят на репрезентативной копии. Backup принимается только после restore и проверки schema revision, инвариантов данных, аутентификации и критичных API flows. Retention audit не автоматизируется до утверждения privacy policy. У каждого alert есть владелец и основанный на evidence порог. Staging rollout можно остановить без недокументированного изменения данных. Security, architecture, observability и deployment docs обновляются вместе с реализацией.
+
+### Открытые решения и риски
+
+Платформа deployment, secret manager, место telemetry, audit retention, backup destination и модель on-call пока не выбраны. Redis сейчас эфемерен: потеря сбрасывает сессии и rate counters; инструкция восстановления должна описывать безопасную повторную аутентификацию. Production readiness нельзя выводить из локального Compose.
