@@ -63,6 +63,17 @@ The repository does not currently configure a Prometheus metrics endpoint, metri
 
 Correlate a slow request using the request path, status and duration fields, then inspect database/Redis health and optional traces. Avoid adding raw payloads, passwords, tokens or personal data to logs. Define log access, retention, deletion, incident export and monitoring ownership before any production deployment.
 
+The <code>/health/live</code> probe reports process liveness.
+<code>/health/ready</code> checks PostgreSQL, Redis, the configured media
+directory, and the compiled frontend assets in parallel; it returns HTTP 503
+with per-component status when any required component is unavailable. Database
+and Redis probes have a two-second deadline; the Redis probe performs an
+expiring write and read to verify session/cache access. Responses contain no
+exception details. Optional OTLP tracing is not a readiness dependency.
+Readiness does not execute business API routes or mutate data; verify those
+contracts with the API test suite. Compose separately monitors the PostgreSQL,
+Redis, API, and Nginx containers.
+
 ---
 
 <a id="russian"></a>
@@ -124,3 +135,14 @@ uv run hypercorn app.main:app --bind 127.0.0.1:8000 \
 ### Эксплуатационное применение
 
 Для разбора медленного запроса сопоставляйте path, status и duration, затем проверяйте состояние PostgreSQL/Redis и опциональные traces. Не добавляйте в логи raw payloads, пароли, токены или персональные данные. До production-развёртывания определите владельцев мониторинга, доступа к логам, retention, удаления и экспорта данных при инциденте.
+
+Проба <code>/health/live</code> проверяет, что процесс запущен.
+<code>/health/ready</code> параллельно проверяет PostgreSQL, Redis,
+настроенный каталог медиа и собранные frontend-ассеты; если недоступен хотя
+бы один обязательный компонент, возвращается HTTP 503 со статусом каждого
+компонента. Для PostgreSQL и Redis установлен таймаут две секунды; Redis
+проверяется временной записью и чтением ключа с автоматическим TTL. Ответ не
+раскрывает текст исключений. Опциональная OTLP-трассировка не является
+обязательной зависимостью readiness. Readiness не вызывает бизнес-ручки и не
+меняет данные; их контракты проверяются API-тестами. Compose отдельно
+контролирует состояние контейнеров PostgreSQL, Redis, API и Nginx.
