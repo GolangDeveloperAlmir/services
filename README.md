@@ -1,5 +1,11 @@
 # User Service
 
+[![CI](https://github.com/GolangDeveloperAlmir/services/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/GolangDeveloperAlmir/services/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/GolangDeveloperAlmir/services/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/GolangDeveloperAlmir/services/actions/workflows/codeql.yml)
+[![License: AOAL 1.0](https://img.shields.io/badge/license-AOAL%201.0-blue.svg)](LICENSE)
+
+> Secure, administrator-only user-profile service built with FastAPI, PostgreSQL, Redis-backed sessions, HTTPS/HTTP2, and a bilingual web console.
+
 ## Русский
 
 User Service — FastAPI-сервис профилей с локальной аутентификацией
@@ -7,6 +13,12 @@ User Service — FastAPI-сервис профилей с локальной а�
 профилей требуют активную роль `admin`. Это не публичная identity-платформа:
 MFA, SSO/OIDC, tenant isolation и пользовательское самообслуживание не входят
 в текущий scope.
+
+**Основатель, создатель, первоначальный автор и правообладатель оригинальных
+материалов проекта:** Альмир Саитов (ALMIR, [@GolangDeveloperAlmir](https://github.com/GolangDeveloperAlmir)).
+Условия авторства, использования и атрибуции описаны в
+[AUTHORS.md](AUTHORS.md) и [LICENSE](LICENSE). Сторонние компоненты и материалы
+сохраняют собственные лицензии и уведомления.
 
 ### Быстрый старт
 
@@ -125,8 +137,9 @@ make architecture
 [наблюдаемость](docs/observability.md),
 [нагрузочные проверки](docs/performance.md), [обзор продукта](docs/product-overview.md),
 [план развития и будущие ТЗ](docs/roadmap.md),
-[участие в разработке](CONTRIBUTING.md), [политика раскрытия](SECURITY.md)
-и [инструкции для AI-агентов](AGENTS.md).
+[участие в разработке](CONTRIBUTING.md), [политика раскрытия](SECURITY.md),
+[авторство и правообладание](AUTHORS.md) и
+[инструкции для AI-агентов](AGENTS.md).
 
 ### Лицензия и поддержка
 
@@ -145,6 +158,13 @@ authentication, PostgreSQL, Redis-backed sessions, and HTTPS/HTTP2. Every
 profile CRUD route requires an active `admin` role. It is not a public identity
 platform: MFA, SSO/OIDC, tenant isolation, and end-user self-service are out of
 scope.
+
+**Project founder, creator, original author, and rights holder for original
+project materials:** Almir Saitov (ALMIR,
+[@GolangDeveloperAlmir](https://github.com/GolangDeveloperAlmir)). Authorship,
+reuse, and attribution terms are described in [AUTHORS.md](AUTHORS.md) and
+[LICENSE](LICENSE). Third-party components and materials retain their own
+licenses and notices.
 
 ### Quick start
 
@@ -261,7 +281,8 @@ Start at the [documentation index](docs/index.md): [architecture](docs/architect
 [observability](docs/observability.md),
 [load testing](docs/performance.md), [product overview](docs/product-overview.md),
 [proposed roadmap and future specifications](docs/roadmap.md),
-[contributing](CONTRIBUTING.md), [responsible disclosure](SECURITY.md), and
+[contributing](CONTRIBUTING.md), [responsible disclosure](SECURITY.md),
+[authorship and ownership](AUTHORS.md), and
 [AI agent guidance](AGENTS.md).
 
 The roadmap is a planning document, not a feature or delivery commitment.
