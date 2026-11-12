@@ -1,9 +1,11 @@
 """Business rules for profile CRUD operations."""
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.models import SecurityAuditEvent
 
 from app.users.exceptions import (
     EmailAlreadyExistsError,
@@ -21,6 +23,24 @@ class UserService:
         """Create a profile service using the supplied transaction session."""
         self.session = session
         self.repository = UserRepository(session)
+
+    def _record_audit_event(
+        self,
+        *,
+        actor_user_id: UUID,
+        target_user_id: UUID,
+        event_type: str,
+        source_ip: str | None,
+    ) -> None:
+        """Stage a profile audit event in the current database transaction."""
+        self.session.add(
+            SecurityAuditEvent(
+                actor_user_id=actor_user_id,
+                target_user_id=target_user_id,
+                event_type=event_type,
+                source_ip=source_ip,
+            )
+        )
 
     @staticmethod
     def normalize_email(email: str) -> str:
@@ -58,18 +78,31 @@ class UserService:
 
             raise
 
-    async def create(self, data: UserCreate) -> User:
+    async def create(
+        self,
+        data: UserCreate,
+        *,
+        actor_user_id: UUID,
+        source_ip: str | None = None,
+    ) -> User:
         """Create and persist a profile after checking normalized email uniqueness."""
         email = self.normalize_email(str(data.email))
 
         await self.ensure_email_available(email)
 
         user = User(
+            id=uuid4(),
             email=email,
             full_name=data.full_name,
         )
 
         self.repository.add(user)
+        self._record_audit_event(
+            actor_user_id=actor_user_id,
+            target_user_id=user.id,
+            event_type="user.profile.created",
+            source_ip=source_ip,
+        )
 
         await self.commit(email=email)
         await self.session.refresh(user)
@@ -89,7 +122,14 @@ class UserService:
         """Return a bounded page of profiles in repository-defined order."""
         return await self.repository.get_all(offset, limit)
 
-    async def update(self, user_id: UUID, data: UserUpdate) -> User:
+    async def update(
+        self,
+        user_id: UUID,
+        data: UserUpdate,
+        *,
+        actor_user_id: UUID,
+        source_ip: str | None = None,
+    ) -> User:
         """Apply only supplied profile fields and persist the updated row."""
         user = await self.get_by_id(user_id)
 
@@ -107,14 +147,32 @@ class UserService:
         for field, value in changes.items():
             setattr(user, field, value)
 
+        self._record_audit_event(
+            actor_user_id=actor_user_id,
+            target_user_id=user.id,
+            event_type="user.profile.updated",
+            source_ip=source_ip,
+        )
         await self.commit(email=email, exclude_user_id=user.id)
         await self.session.refresh(user)
 
         return user
 
-    async def delete(self, user_id: UUID) -> None:
+    async def delete(
+        self,
+        user_id: UUID,
+        *,
+        actor_user_id: UUID,
+        source_ip: str | None = None,
+    ) -> None:
         """Delete an existing profile and commit the transaction."""
         user = await self.get_by_id(user_id)
 
         await self.repository.delete(user)
+        self._record_audit_event(
+            actor_user_id=actor_user_id,
+            target_user_id=user.id,
+            event_type="user.profile.deleted",
+            source_ip=source_ip,
+        )
         await self.commit()
