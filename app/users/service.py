@@ -97,6 +97,8 @@ class UserService:
         )
 
         self.repository.add(user)
+        # Insert the profile first so the audit row's target foreign key is valid.
+        await self.session.flush()
         self._record_audit_event(
             actor_user_id=actor_user_id,
             target_user_id=user.id,
@@ -168,11 +170,14 @@ class UserService:
         """Delete an existing profile and commit the transaction."""
         user = await self.get_by_id(user_id)
 
-        await self.repository.delete(user)
         self._record_audit_event(
             actor_user_id=actor_user_id,
             target_user_id=user.id,
             event_type="user.profile.deleted",
             source_ip=source_ip,
         )
+        # Persist the audit row before deleting its target; ON DELETE SET NULL
+        # then preserves the event without retaining a dangling user reference.
+        await self.session.flush()
+        await self.repository.delete(user)
         await self.commit()
