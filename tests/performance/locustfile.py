@@ -100,7 +100,7 @@ class UserApiLoad(HttpUser):
 
         # Locust's session can bypass environment CA discovery; configure the
         # dedicated test CA explicitly while keeping certificate verification on.
-        self.client.verify = os.environ.get("REQUESTS_CA_BUNDLE", True)
+        self.client.verify = os.environ.get("REQUESTS_CA_BUNDLE") or True
         self.client.headers.update({"Authorization": f"Bearer {token}"})
 
     @task(5)
