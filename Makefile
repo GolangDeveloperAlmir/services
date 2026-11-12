@@ -3,6 +3,8 @@
 PERF_USERS ?= 100
 PERF_SPAWN_RATE ?= 10
 PERF_RUN_TIME ?= 5m
+HOST_UID ?= $(shell id -u)
+HOST_GID ?= $(shell id -g)
 
 frontend-install:
 	cd frontend && npm ci
@@ -83,7 +85,7 @@ compose-config:
 nginx-check:
 	# Match the certificate owner's identity instead of broadening file permissions.
 	docker run --rm --network none --read-only \
-		--user "$(id -u):$(id -g)" \
+		--user "$(HOST_UID):$(HOST_GID)" \
 		--tmpfs /tmp:size=32m,mode=1777 \
 		--cap-drop ALL \
 		--security-opt no-new-privileges:true \
