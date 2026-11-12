@@ -97,6 +97,10 @@ class UserApiLoad(HttpUser):
         token = os.environ.get("PERF_AUTH_TOKEN")
         if not token:
             raise LocustError("Set PERF_AUTH_TOKEN to an admin session for the local test service.")
+
+        # Locust's session can bypass environment CA discovery; configure the
+        # dedicated test CA explicitly while keeping certificate verification on.
+        self.client.verify = os.environ.get("REQUESTS_CA_BUNDLE", True)
         self.client.headers.update({"Authorization": f"Bearer {token}"})
 
     @task(5)
