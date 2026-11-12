@@ -100,8 +100,6 @@ async def update_user(
         raise HTTPException(status_code=403, detail="Forbidden")
     invalidate_sessions = False
     if data.is_active is False:
-        if admin.user_id is None:
-            raise HTTPException(status_code=403, detail="Forbidden")
         try:
             invalidate_sessions = await auth_service.ensure_admin_account_can_change(
                 user_id,
