@@ -81,9 +81,11 @@ compose-config:
 	docker compose config --quiet
 
 nginx-check:
+	# Match the certificate owner's identity instead of broadening file permissions.
 	docker run --rm --network none --read-only \
+		--user "$(id -u):$(id -g)" \
 		--tmpfs /tmp:size=32m,mode=1777 \
-		--cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID \
+		--cap-drop ALL \
 		--security-opt no-new-privileges:true \
 		--volume "$(CURDIR)/nginx/default.conf:/etc/nginx/nginx.conf:ro" \
 		--volume "$(CURDIR)/nginx/proxy_params:/etc/nginx/proxy_params:ro" \
