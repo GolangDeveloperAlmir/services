@@ -31,7 +31,7 @@ from app.users.router import router as users_router
 
 def test_local_auth_uses_argon2id_and_rejects_common_or_invalid_passwords() -> None:
     """Verify Argon2id use and password length/common-password validation."""
-    password = "river-cobalt-lantern-94!"
+    password = "river-cobalt-lantern-94!"  # pragma: allowlist secret
     password_hash = hash_password(password)
 
     assert password_hash.startswith("$argon2id$")
@@ -85,8 +85,8 @@ def test_login_rate_limit_stops_before_database_authentication() -> None:
 def test_production_settings_require_tls_and_non_loopback_hosts() -> None:
     """Reject production configurations without TLS or explicit remote hosts."""
     valid = {
-        "database_url": "postgresql+asyncpg://user:pass@db.example.test/service?ssl=require",
-        "redis_url": "rediss://:pass@cache.example.test:6379/0",
+        "database_url": "postgresql+asyncpg://user:pass@db.example.test/service?ssl=require",  # pragma: allowlist secret
+        "redis_url": "rediss://:pass@cache.example.test:6379/0",  # pragma: allowlist secret
         "app_env": "production",
         "allowed_hosts": ["api.example.test"],
         "trusted_proxy_ips": ["192.0.2.10"],
@@ -94,14 +94,14 @@ def test_production_settings_require_tls_and_non_loopback_hosts() -> None:
     Settings(**valid)
 
     with pytest.raises(ValueError, match="TLS"):
-        Settings(**{**valid, "redis_url": "redis://:pass@cache.example.test:6379/0"})
+        Settings(**{**valid, "redis_url": "redis://:pass@cache.example.test:6379/0"})  # pragma: allowlist secret
     with pytest.raises(ValueError, match="loopback"):
         Settings(**{**valid, "allowed_hosts": ["localhost"]})
     with pytest.raises(ValueError, match="DATABASE_URL"):
         Settings(
             **{
                 **valid,
-                "database_url": "postgresql+asyncpg://user:pass@db.example.test/service",
+                "database_url": "postgresql+asyncpg://user:pass@db.example.test/service",  # pragma: allowlist secret
             }
         )
     with pytest.raises(ValueError, match="explicit"):
@@ -118,8 +118,8 @@ def test_app_prefixed_environment_settings_are_loaded(monkeypatch, tmp_path) -> 
 
     configured = Settings(
         _env_file=None,
-        database_url="postgresql+asyncpg://user:pass@db.example.test/service",
-        redis_url="redis://:pass@cache.example.test:6379/0",
+        database_url="postgresql+asyncpg://user:pass@db.example.test/service",  # pragma: allowlist secret
+        redis_url="redis://:pass@cache.example.test:6379/0",  # pragma: allowlist secret
     )
 
     assert configured.allowed_hosts == ["console.example.test"]
@@ -129,7 +129,7 @@ def test_app_prefixed_environment_settings_are_loaded(monkeypatch, tmp_path) -> 
 
 def test_invalid_production_config_does_not_echo_secret_urls() -> None:
     """Avoid disclosing database or Redis passwords in validation errors."""
-    secret = "sensitive-password-marker"
+    secret = "sensitive-password-marker"  # pragma: allowlist secret
     values = {
         "database_url": f"postgresql+asyncpg://user:{secret}@db.example.test/service",
         "redis_url": f"redis://:{secret}@cache.example.test:6379/0",
@@ -168,7 +168,7 @@ def test_http_is_rejected_and_https_responses_include_security_headers() -> None
 
 def test_validation_errors_never_reflect_supplied_passwords() -> None:
     """Keep an invalid login password out of the 422 response body."""
-    secret = "do-not-echo-" * 20
+    secret = "do-not-echo-" * 20  # pragma: allowlist secret
     app.state.redis = AsyncMock()
     client = TestClient(app, base_url="https://localhost")
 
