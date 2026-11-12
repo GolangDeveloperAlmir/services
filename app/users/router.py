@@ -42,7 +42,7 @@ async def create_user(
     admin: AdminDep,
     service: UserServiceDep,
 ) -> UserRead:
-    """Create a profile, recording the administrator and request source."""
+    """Create a profile and return its public representation."""
     if admin.user_id is None:
         raise HTTPException(status_code=403, detail="Forbidden")
     user = await service.create(
