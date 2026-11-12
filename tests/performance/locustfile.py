@@ -18,7 +18,7 @@ from tests.performance.safety import (
 )
 
 REPORT_DIR = Path(os.getenv("PERF_REPORT_DIR", "reports"))
-_duplicate_email = f"load-conflict-{uuid4().hex}@example.test"
+_duplicate_email = f"load-conflict-{uuid4().hex}@example.com"
 
 
 @events.init.add_listener
@@ -106,7 +106,7 @@ class UserApiLoad(HttpUser):
     @task(5)
     def create_read_update_delete_lifecycle(self) -> None:
         """Create, read, update, and delete an isolated profile."""
-        email = f"load-{uuid4().hex}@example.test"
+        email = f"load-{uuid4().hex}@example.com"
         with self.client.post(
             "/users",
             json={"email": email, "full_name": "Load Test User"},
@@ -178,13 +178,13 @@ class UserApiLoad(HttpUser):
         """Exercise rejected create payloads without persisting user data."""
         invalid_payloads = (
             {"email": "not-an-email", "full_name": "Invalid Email"},
-            {"email": f"load-{uuid4().hex}@example.test", "full_name": ""},
+            {"email": f"load-{uuid4().hex}@example.com", "full_name": ""},
             {
-                "email": f"load-{uuid4().hex}@example.test",
+                "email": f"load-{uuid4().hex}@example.com",
                 "full_name": "x" * 121,
             },
             {
-                "email": f"load-{uuid4().hex}@example.test",
+                "email": f"load-{uuid4().hex}@example.com",
                 "full_name": "Unknown field",
                 "unexpected": True,
             },
@@ -229,7 +229,7 @@ class UserApiLoad(HttpUser):
             ("x", 201, "minimum-name"),
             ("x" * 120, 201, "maximum-name"),
         ):
-            email = f"load-{uuid4().hex}@example.test"
+            email = f"load-{uuid4().hex}@example.com"
             with self.client.post(
                 "/users",
                 json={"email": email, "full_name": full_name},
