@@ -2,7 +2,7 @@
 
 import pytest
 
-from tests.performance.safety import validate_load_profile
+from tests.performance.safety import MAX_DURATION_SECONDS, validate_load_profile
 
 
 @pytest.mark.parametrize(
@@ -14,7 +14,7 @@ from tests.performance.safety import validate_load_profile
     ],
 )
 @pytest.mark.parametrize("duration", ["30s", 30, 30.0])
-def test_load_profile_accepts_loopback_targets(host: str, duration: str | int | float) -> None:
+def test_load_profile_accepts_loopback_targets(host: str, duration: str | float) -> None:
     """Allow localhost and IPv4/IPv6 loopback endpoints with Locust's parsed seconds."""
     validate_load_profile(host, users=10, duration=duration)
 
@@ -53,5 +53,5 @@ def test_load_profile_enforces_user_and_duration_caps(
     duration: str | int | float,
 ) -> None:
     """Enforce finite runs and the configured maximum virtual-user count."""
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError if isinstance(duration, bool) else ValueError):
         validate_load_profile("http://127.0.0.1:8000", users, duration)

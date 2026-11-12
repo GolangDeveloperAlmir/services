@@ -205,11 +205,13 @@ class UserApiLoad(HttpUser):
             catch_response=True,
         ) as response:
             if response.status_code not in {201, 409}:
-                response.failure(
-                    _unexpected_status_message(response, 201)
-                    if response.status_code != 409
-                    else _unexpected_status_message(response, 409)
-                )
+                expected = "HTTP 201 or 409"
+                if response.status_code == 0:
+                    error = getattr(response, "error", None)
+                    detail = f": {type(error).__name__}: {error}" if error else ""
+                    response.failure(f"expected {expected}, but no HTTP response was received{detail}")
+                else:
+                    response.failure(f"expected {expected}, got {response.status_code}")
             else:
                 response.success()
 

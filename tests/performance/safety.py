@@ -11,7 +11,7 @@ MAX_DURATION_SECONDS = 15 * 60
 _DURATION_PATTERN = re.compile(r"^([1-9]\d*)(s|m|h)$")
 
 
-def validate_load_profile(host: str, users: int, duration: str | int | float) -> None:
+def validate_load_profile(host: str, users: int, duration: str | float) -> None:
     """Reject non-loopback hosts and load profiles beyond hard safety caps."""
     parsed = urlsplit(host)
     if (
@@ -38,8 +38,8 @@ def validate_load_profile(host: str, users: int, duration: str | int | float) ->
         raise ValueError(f"Virtual users must be between 1 and {MAX_USERS}.")
 
     if isinstance(duration, bool):
-        raise ValueError("Specify a finite duration such as 30s or 5m.")
-    if isinstance(duration, (int, float)):
+        raise TypeError("Duration must be a string or a number of seconds.")
+    if type(duration) in (int, float):
         duration_seconds = float(duration)
     elif isinstance(duration, str):
         match = _DURATION_PATTERN.fullmatch(duration)
@@ -49,7 +49,7 @@ def validate_load_profile(host: str, users: int, duration: str | int | float) ->
         unit = match.group(2)
         duration_seconds = float(value * {"s": 1, "m": 60, "h": 3600}[unit])
     else:
-        raise ValueError("Specify a finite duration such as 30s or 5m.")
+        raise TypeError("Duration must be a string or a number of seconds.")
 
     if (
         not isfinite(duration_seconds)
