@@ -18,20 +18,20 @@ from tests.performance.safety import (
 )
 
 REPORT_DIR = Path(os.getenv("PERF_REPORT_DIR", "reports"))
-_duplicate_email = f"load-conflict-{uuid4().hex}@example.test"
+_duplicate_email = f"load-conflict-{uuid4().hex}@example.com"
 
 
-@events.test_start.add_listener
+@events.init.add_listener
 def enforce_safe_local_profile(environment, **kwargs) -> None:
-    """Refuse to start a load test unless its target and profile are safe."""
+    """Reject unsafe load profiles during initialization, before users can spawn."""
     options = environment.parsed_options
     try:
         validate_load_profile(
             environment.host or "",
             int(getattr(options, "num_users", 0)),
-            str(getattr(options, "run_time", "")),
+            getattr(options, "run_time", None),
         )
-    except ValueError as error:
+    except (TypeError, ValueError) as error:
         raise LocustError(str(error)) from error
 
 
@@ -66,10 +66,23 @@ def write_performance_summary(environment, **kwargs) -> None:
     print(f"\nPerformance summary: {report_path}", file=sys.stderr)
 
 
+def _unexpected_status_message(response, expected: int) -> str:
+    """Explain both unexpected HTTP responses and failures before an HTTP response."""
+    if response.status_code == 0:
+        error = getattr(response, "error", None)
+        if error is not None:
+            return (
+                f"expected HTTP {expected}, but no HTTP response was received: "
+                f"{type(error).__name__}: {error}"
+            )
+        return f"expected HTTP {expected}, but no HTTP response was received (status 0)"
+    return f"expected HTTP {expected}, got {response.status_code}"
+
+
 def _expect_status(response, expected: int) -> None:
     """Mark a Locust response successful only when its status matches."""
     if response.status_code != expected:
-        response.failure(f"expected HTTP {expected}, got {response.status_code}")
+        response.failure(_unexpected_status_message(response, expected))
     else:
         response.success()
 
@@ -84,12 +97,16 @@ class UserApiLoad(HttpUser):
         token = os.environ.get("PERF_AUTH_TOKEN")
         if not token:
             raise LocustError("Set PERF_AUTH_TOKEN to an admin session for the local test service.")
+
+        # Locust's session can bypass environment CA discovery; configure the
+        # dedicated test CA explicitly while keeping certificate verification on.
+        self.client.verify = os.environ.get("REQUESTS_CA_BUNDLE") or True
         self.client.headers.update({"Authorization": f"Bearer {token}"})
 
     @task(5)
     def create_read_update_delete_lifecycle(self) -> None:
         """Create, read, update, and delete an isolated profile."""
-        email = f"load-{uuid4().hex}@example.test"
+        email = f"load-{uuid4().hex}@example.com"
         with self.client.post(
             "/users",
             json={"email": email, "full_name": "Load Test User"},
@@ -97,7 +114,7 @@ class UserApiLoad(HttpUser):
             catch_response=True,
         ) as response:
             if response.status_code != 201:
-                response.failure(f"expected HTTP 201, got {response.status_code}")
+                response.failure(_unexpected_status_message(response, 201))
                 return
             user_id = response.json()["id"]
             response.success()
@@ -161,13 +178,13 @@ class UserApiLoad(HttpUser):
         """Exercise rejected create payloads without persisting user data."""
         invalid_payloads = (
             {"email": "not-an-email", "full_name": "Invalid Email"},
-            {"email": f"load-{uuid4().hex}@example.test", "full_name": ""},
+            {"email": f"load-{uuid4().hex}@example.com", "full_name": ""},
             {
-                "email": f"load-{uuid4().hex}@example.test",
+                "email": f"load-{uuid4().hex}@example.com",
                 "full_name": "x" * 121,
             },
             {
-                "email": f"load-{uuid4().hex}@example.test",
+                "email": f"load-{uuid4().hex}@example.com",
                 "full_name": "Unknown field",
                 "unexpected": True,
             },
@@ -192,7 +209,15 @@ class UserApiLoad(HttpUser):
             catch_response=True,
         ) as response:
             if response.status_code not in {201, 409}:
-                response.failure(f"expected HTTP 201 or 409, got {response.status_code}")
+                expected = "HTTP 201 or 409"
+                if response.status_code == 0:
+                    error = getattr(response, "error", None)
+                    detail = f": {type(error).__name__}: {error}" if error else ""
+                    response.failure(
+                        f"expected {expected}, but no HTTP response was received{detail}"
+                    )
+                else:
+                    response.failure(f"expected {expected}, got {response.status_code}")
             else:
                 response.success()
 
@@ -204,7 +229,7 @@ class UserApiLoad(HttpUser):
             ("x", 201, "minimum-name"),
             ("x" * 120, 201, "maximum-name"),
         ):
-            email = f"load-{uuid4().hex}@example.test"
+            email = f"load-{uuid4().hex}@example.com"
             with self.client.post(
                 "/users",
                 json={"email": email, "full_name": full_name},
@@ -212,7 +237,7 @@ class UserApiLoad(HttpUser):
                 catch_response=True,
             ) as response:
                 if response.status_code != expected:
-                    response.failure(f"expected HTTP {expected}, got {response.status_code}")
+                    response.failure(_unexpected_status_message(response, expected))
                     continue
                 if response.status_code == 201:
                     user_id = response.json()["id"]

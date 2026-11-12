@@ -31,6 +31,16 @@ RUN uv sync --locked --no-dev
 
 FROM python:3.14-slim AS runtime
 
+# Apply the Debian security update for zlib before creating the runtime image.
+# pip is a build/install tool; the production venv already contains all runtime
+# dependencies, so remove the base-image installer and its vendored packages.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/local/lib/python3.14/site-packages/pip \
+              /usr/local/lib/python3.14/site-packages/pip-*.dist-info \
+              /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.14
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \

@@ -31,6 +31,8 @@ In the local Compose environment, the service is available at <code>https://127.
 
 Login returns an opaque bearer token and <code>expires_in</code>. Send the token as <code>Authorization: Bearer &lt;token&gt;</code>. Tokens are short-lived; never log them or store them in browser local storage. Password fields reject unknown JSON fields. A failed or limited login returns 401 or 429 respectively; rate-limit responses include <code>Retry-After</code>.
 
+The admin-only <code>GET /auth/audit</code> endpoint returns recent events newest first. It includes authentication and administrator lifecycle events, as well as profile mutation events: <code>user.profile.created</code>, <code>user.profile.updated</code> and <code>user.profile.deleted</code>. Each event records the acting administrator, target profile when it still exists, request source IP when available, and timestamp. The endpoint does not expose passwords, bearer tokens or submitted profile values.
+
 ### Profile endpoints
 
 All profile routes require a valid session for an active <code>admin</code> account. There is no public registration or non-admin access.
@@ -136,6 +138,8 @@ FastAPI generates the committed [OpenAPI snapshot](../openapi.yaml). After chang
 | GET | <code>/auth/audit</code> | Получение последних security events; limit 1–500 | 200 |
 
 Вход возвращает непрозрачный bearer-токен и <code>expires_in</code>. Передавайте его как <code>Authorization: Bearer &lt;token&gt;</code>. Токены короткоживущие: не записывайте их в логи или browser local storage. Поля паролей отклоняют неизвестные JSON-поля. Неуспешный вход возвращает 401, превышение лимита — 429 с заголовком <code>Retry-After</code>.
+
+Admin-only endpoint <code>GET /auth/audit</code> возвращает последние события в порядке от новых к старым. Помимо аутентификации и управления администраторами, он включает изменения профилей: <code>user.profile.created</code>, <code>user.profile.updated</code> и <code>user.profile.deleted</code>. Каждая запись содержит инициатора, целевой профиль, пока он существует, IP запроса при его наличии и время события. Пароли, bearer-токены и переданные значения полей профиля в журнал не попадают.
 
 ### Маршруты профилей
 
