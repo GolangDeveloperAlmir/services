@@ -94,7 +94,9 @@ def test_production_settings_require_tls_and_non_loopback_hosts() -> None:
     Settings(**valid)
 
     with pytest.raises(ValueError, match="TLS"):
-        Settings(**{**valid, "redis_url": "redis://:pass@cache.example.test:6379/0"})  # pragma: allowlist secret
+        Settings(
+            **{**valid, "redis_url": "redis://:pass@cache.example.test:6379/0"}
+        )  # pragma: allowlist secret
     with pytest.raises(ValueError, match="loopback"):
         Settings(**{**valid, "allowed_hosts": ["localhost"]})
     with pytest.raises(ValueError, match="DATABASE_URL"):
