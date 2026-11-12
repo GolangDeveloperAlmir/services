@@ -31,7 +31,7 @@ def enforce_safe_local_profile(environment, **kwargs) -> None:
             int(getattr(options, "num_users", 0)),
             getattr(options, "run_time", None),
         )
-    except ValueError as error:
+    except (TypeError, ValueError) as error:
         raise LocustError(str(error)) from error
 
 

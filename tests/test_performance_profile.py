@@ -50,7 +50,7 @@ def test_load_profile_rejects_non_local_or_ambiguous_targets(host: str) -> None:
 )
 def test_load_profile_enforces_user_and_duration_caps(
     users: int,
-    duration: str | int | float,
+    duration: str | float,
 ) -> None:
     """Enforce finite runs and the configured maximum virtual-user count."""
     with pytest.raises(TypeError if isinstance(duration, bool) else ValueError):
