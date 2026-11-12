@@ -112,7 +112,7 @@ def test_user_service_create_normalizes_email_and_commits() -> None:
         service.create(
             UserCreate(email=" Person@Example.com ", full_name=" Example Person "),
             actor_user_id=actor_id,
-            source_ip="192.0.2.10",
+            source_ip="10.0.0.10",
         )
     )
 
@@ -125,7 +125,7 @@ def test_user_service_create_normalizes_email_and_commits() -> None:
     assert event.actor_user_id == actor_id
     assert event.target_user_id == created.id
     assert event.event_type == "user.profile.created"
-    assert event.source_ip == "192.0.2.10"
+    assert event.source_ip == "10.0.0.10"
 
 
 def test_user_service_reads_and_paginates() -> None:
@@ -157,7 +157,7 @@ def test_user_service_updates_profile_and_normalizes_email() -> None:
             user.id,
             UserUpdate(email="PERSON@EXAMPLE.COM", full_name=" Updated Name ", is_active=False),
             actor_user_id=actor_id,
-            source_ip="192.0.2.11",
+            source_ip="10.0.0.11",
         )
     )
 
@@ -171,7 +171,7 @@ def test_user_service_updates_profile_and_normalizes_email() -> None:
     assert event.actor_user_id == actor_id
     assert event.target_user_id == user.id
     assert event.event_type == "user.profile.updated"
-    assert event.source_ip == "192.0.2.11"
+    assert event.source_ip == "10.0.0.11"
 
 
 def test_user_service_rejects_duplicate_email_on_create_and_update() -> None:
@@ -209,7 +209,7 @@ def test_user_service_delete_removes_existing_user_and_commits() -> None:
         service.delete(
             user.id,
             actor_user_id=actor_id,
-            source_ip="192.0.2.12",
+            source_ip="10.0.0.12",
         )
     )
 
@@ -221,7 +221,7 @@ def test_user_service_delete_removes_existing_user_and_commits() -> None:
     assert event.actor_user_id == actor_id
     assert event.target_user_id == user.id
     assert event.event_type == "user.profile.deleted"
-    assert event.source_ip == "192.0.2.12"
+    assert event.source_ip == "10.0.0.12"
 
 
 class MemoryCRUDService:
