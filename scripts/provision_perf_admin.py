@@ -11,7 +11,7 @@ from app.db.session import SessionFactory, redis_client
 
 async def provision() -> str:
     """Create the disposable test administrator and return its session token."""
-    email = "performance-admin@example.test"
+    email = "performance-admin@example.com"
     password = secrets.token_urlsafe(32)
     async with SessionFactory() as session:
         service = AuthService(session, redis_client)

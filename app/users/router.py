@@ -36,9 +36,20 @@ UserServiceDep = Annotated[UserService, Depends(get_user_service)]
     status_code=status.HTTP_201_CREATED,
     responses={409: {"description": "Email already exists"}},
 )
-async def create_user(data: UserCreate, service: UserServiceDep) -> UserRead:
+async def create_user(
+    data: UserCreate,
+    request: Request,
+    admin: AdminDep,
+    service: UserServiceDep,
+) -> UserRead:
     """Create a profile and return its public representation."""
-    user = await service.create(data)
+    if admin.user_id is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    user = await service.create(
+        data,
+        actor_user_id=admin.user_id,
+        source_ip=request.client.host if request.client else None,
+    )
 
     return UserRead.model_validate(user)
 
@@ -85,10 +96,10 @@ async def update_user(
     auth_service: AuthServiceDep,
 ) -> UserRead:
     """Update profile fields while preserving administrator safety invariants."""
+    if admin.user_id is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
     invalidate_sessions = False
     if data.is_active is False:
-        if admin.user_id is None:
-            raise HTTPException(status_code=403, detail="Forbidden")
         try:
             invalidate_sessions = await auth_service.ensure_admin_account_can_change(
                 user_id,
@@ -98,7 +109,12 @@ async def update_user(
             )
         except AdministratorInvariantError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
-    user = await service.update(user_id, data)
+    user = await service.update(
+        user_id,
+        data,
+        actor_user_id=admin.user_id,
+        source_ip=request.client.host if request.client else None,
+    )
     if invalidate_sessions:
         await auth_service.revoke_user_sessions(user_id)
 
@@ -132,6 +148,10 @@ async def delete_user(
         )
     except AdministratorInvariantError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    await service.delete(user_id)
+    await service.delete(
+        user_id,
+        actor_user_id=admin.user_id,
+        source_ip=request.client.host if request.client else None,
+    )
     if invalidate_sessions:
         await auth_service.revoke_user_sessions(user_id)

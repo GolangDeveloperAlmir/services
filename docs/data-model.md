@@ -72,7 +72,8 @@ PostgreSQL is authoritative for active account and role state. Redis stores shor
 - A profile is not an authentication account by itself. Local login requires a separate credential row and an active admin role.
 - Profile CRUD stores normalized email casing. The unique database constraint is the final defence against concurrent duplicate writes.
 - <code>assigned_by</code>, audit actor and audit target references are nullable and use <code>ON DELETE SET NULL</code>; deleting a user does not erase the audit event.
-- Audit events include security mutations and successful authentication lifecycle events. Failed logins are represented by rate counters, not audit rows.
+- Audit events include security mutations, successful authentication lifecycle events, and administrator-driven profile creation, updates, and deletion (user.profile.created, user.profile.updated, user.profile.deleted). Profile mutation events are committed in the same PostgreSQL transaction as the profile change.
+- Failed logins are represented by rate counters, not audit rows.
 - Audit retention is not automated. Operators must define a privacy-compliant retention and deletion policy.
 - Redis session state is ephemeral. Losing Redis invalidates sessions and resets counters; PostgreSQL remains authoritative for roles and credentials.
 - Profile listing uses <code>created_at DESC, id ASC</code> with bounded <code>offset/limit</code>; this is query behaviour, not another entity.
@@ -163,7 +164,8 @@ PostgreSQL является источником истины для состо�
 - Профиль сам по себе не является учётной записью для входа. Локальная аутентификация требует отдельную строку credentials и активную роль admin.
 - CRUD сохраняет email в нормализованном регистре. Уникальный constraint БД остаётся последней защитой от конкурентной записи дубликатов.
 - Ссылки <code>assigned_by</code>, audit actor и audit target допускают NULL и используют <code>ON DELETE SET NULL</code>; удаление пользователя не стирает audit-событие.
-- Audit содержит изменения безопасности и успешные события lifecycle аутентификации. Неуспешные входы учитываются rate counters, а не audit-строками.
+- Audit содержит изменения безопасности, успешные события lifecycle аутентификации и создание, обновление и удаление профилей администратором (user.profile.created, user.profile.updated, user.profile.deleted). Событие изменения профиля фиксируется в одной PostgreSQL-транзакции с самой операцией.
+- Неуспешные входы учитываются rate counters, а не audit-строками.
 - Retention аудита автоматически не реализован. Операторы должны определить политику хранения и удаления с учётом privacy.
 - Состояние Redis-сессий временное. Потеря Redis сбрасывает сессии и счётчики; PostgreSQL сохраняет роль и credential state.
 - Список профилей сортируется по <code>created_at DESC, id ASC</code> с ограничением <code>offset/limit</code>; это поведение запроса, а не отдельная сущность.

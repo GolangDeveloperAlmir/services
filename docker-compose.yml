@@ -106,6 +106,9 @@ services:
 
   nginx:
     image: nginx:1.28-alpine
+    # The mounted TLS private key is mode 0600 and owned by the invoking user.
+    # Run Nginx as that same UID/GID; do not grant DAC_OVERRIDE or expose the key.
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     entrypoint: ["nginx"]
     command: ["-g", "daemon off;"]
     depends_on:
@@ -126,10 +129,6 @@ services:
     pids_limit: 64
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
-      - SETUID
-      - SETGID
     security_opt:
       - no-new-privileges:true
     networks:
