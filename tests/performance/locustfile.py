@@ -209,7 +209,9 @@ class UserApiLoad(HttpUser):
                 if response.status_code == 0:
                     error = getattr(response, "error", None)
                     detail = f": {type(error).__name__}: {error}" if error else ""
-                    response.failure(f"expected {expected}, but no HTTP response was received{detail}")
+                    response.failure(
+                        f"expected {expected}, but no HTTP response was received{detail}"
+                    )
                 else:
                     response.failure(f"expected {expected}, got {response.status_code}")
             else:
