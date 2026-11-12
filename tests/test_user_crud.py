@@ -61,6 +61,7 @@ def build_service(
 ) -> tuple[UserService, AsyncMock, MemoryUserRepository]:
     """Build a user service with a mocked session and in-memory repository."""
     session = AsyncMock()
+    session.add = Mock()
     service = UserService(session)
     repository = MemoryUserRepository(session, users)
     service.repository = repository
@@ -105,9 +106,14 @@ def test_repository_lists_users_in_stable_newest_first_order() -> None:
 def test_user_service_create_normalizes_email_and_commits() -> None:
     """Create and commit a profile using trimmed fields and canonical email."""
     service, session, repository = build_service()
+    actor_id = uuid4()
 
     created = asyncio.run(
-        service.create(UserCreate(email=" Person@Example.com ", full_name=" Example Person "))
+        service.create(
+            UserCreate(email=" Person@Example.com ", full_name=" Example Person "),
+            actor_user_id=actor_id,
+            source_ip="192.0.2.10",
+        )
     )
 
     assert created.email == "person@example.com"
@@ -115,6 +121,11 @@ def test_user_service_create_normalizes_email_and_commits() -> None:
     assert repository.users == [created]
     session.commit.assert_awaited_once()
     session.refresh.assert_awaited_once_with(created)
+    event = session.add.call_args.args[0]
+    assert event.actor_user_id == actor_id
+    assert event.target_user_id == created.id
+    assert event.event_type == "user.profile.created"
+    assert event.source_ip == "192.0.2.10"
 
 
 def test_user_service_reads_and_paginates() -> None:
@@ -139,11 +150,14 @@ def test_user_service_updates_profile_and_normalizes_email() -> None:
     """Update profile fields and normalize the supplied email consistently."""
     user = make_user(email="person@example.com")
     service, session, _ = build_service([user])
+    actor_id = uuid4()
 
     updated = asyncio.run(
         service.update(
             user.id,
             UserUpdate(email="PERSON@EXAMPLE.COM", full_name=" Updated Name ", is_active=False),
+            actor_user_id=actor_id,
+            source_ip="192.0.2.11",
         )
     )
 
@@ -153,6 +167,11 @@ def test_user_service_updates_profile_and_normalizes_email() -> None:
     assert user.is_active is False
     session.commit.assert_awaited_once()
     session.refresh.assert_awaited_once_with(user)
+    event = session.add.call_args.args[0]
+    assert event.actor_user_id == actor_id
+    assert event.target_user_id == user.id
+    assert event.event_type == "user.profile.updated"
+    assert event.source_ip == "192.0.2.11"
 
 
 def test_user_service_rejects_duplicate_email_on_create_and_update() -> None:
@@ -161,12 +180,18 @@ def test_user_service_rejects_duplicate_email_on_create_and_update() -> None:
     service, session, _ = build_service([existing, target])
 
     with pytest.raises(EmailAlreadyExistsError, match="Email already exists"):
-        asyncio.run(service.create(UserCreate(email=existing.email, full_name="Another Person")))
+        asyncio.run(
+            service.create(
+                UserCreate(email=existing.email, full_name="Another Person"),
+                actor_user_id=uuid4(),
+            )
+        )
     with pytest.raises(EmailAlreadyExistsError, match="Email already exists"):
         asyncio.run(
             service.update(
                 target.id,
                 UserUpdate(email=existing.email),
+                actor_user_id=uuid4(),
             )
         )
 
@@ -177,12 +202,24 @@ def test_user_service_delete_removes_existing_user_and_commits() -> None:
     """Delete an existing profile from the repository and commit once."""
     user = make_user()
     service, session, repository = build_service([user])
+    actor_id = uuid4()
 
-    asyncio.run(service.delete(user.id))
+    asyncio.run(
+        service.delete(
+            user.id,
+            actor_user_id=actor_id,
+            source_ip="192.0.2.12",
+        )
+    )
 
     assert repository.users == []
     assert repository.deleted == [user]
     session.commit.assert_awaited_once()
+    event = session.add.call_args.args[0]
+    assert event.actor_user_id == actor_id
+    assert event.target_user_id == user.id
+    assert event.event_type == "user.profile.deleted"
+    assert event.source_ip == "192.0.2.12"
 
 
 class MemoryCRUDService:
@@ -191,14 +228,22 @@ class MemoryCRUDService:
     def __init__(self) -> None:
         """Create an empty profile store for isolated HTTP route tests."""
         self.users: dict[UUID, User] = {}
+        self.audit_events: list[tuple[str, UUID, str | None]] = []
 
-    async def create(self, data: UserCreate) -> User:
+    async def create(
+        self,
+        data: UserCreate,
+        *,
+        actor_user_id: UUID,
+        source_ip: str | None = None,
+    ) -> User:
         """Create a profile and reject an email already in the test store."""
         email = str(data.email).casefold()
         if any(user.email.casefold() == email for user in self.users.values()):
             raise EmailAlreadyExistsError
         user = make_user(email=email, full_name=data.full_name)
         self.users[user.id] = user
+        self.audit_events.append(("user.profile.created", actor_user_id, source_ip))
         return user
 
     async def get_all(self, offset: int, limit: int) -> list[User]:
@@ -214,7 +259,14 @@ class MemoryCRUDService:
             raise UserNotFoundError
         return user
 
-    async def update(self, user_id: UUID, data: UserUpdate) -> User:
+    async def update(
+        self,
+        user_id: UUID,
+        data: UserUpdate,
+        *,
+        actor_user_id: UUID,
+        source_ip: str | None = None,
+    ) -> User:
         """Apply validated fields and reject duplicate normalized email."""
         user = await self.get_by_id(user_id)
         changes = data.model_dump(exclude_unset=True)
@@ -228,11 +280,19 @@ class MemoryCRUDService:
             changes["email"] = email
         for field, value in changes.items():
             setattr(user, field, value)
+        self.audit_events.append(("user.profile.updated", actor_user_id, source_ip))
         return user
 
-    async def delete(self, user_id: UUID) -> None:
+    async def delete(
+        self,
+        user_id: UUID,
+        *,
+        actor_user_id: UUID,
+        source_ip: str | None = None,
+    ) -> None:
         """Delete a stored profile after verifying that it exists."""
         await self.get_by_id(user_id)
+        self.audit_events.append(("user.profile.deleted", actor_user_id, source_ip))
         del self.users[user_id]
 
 
@@ -243,10 +303,11 @@ def crud_client():
     auth_service = AsyncMock()
     auth_service.ensure_admin_account_can_change.return_value = False
     previous_overrides = app.dependency_overrides.copy()
+    admin_id = uuid4()
     app.dependency_overrides[require_admin] = lambda: Principal(
         "admin",
         frozenset({"users:admin"}),
-        uuid4(),
+        admin_id,
     )
     app.dependency_overrides[get_user_service] = lambda: service
     app.dependency_overrides[get_auth_service] = lambda: auth_service
@@ -287,6 +348,12 @@ def test_user_crud_http_endpoints(crud_client) -> None:
     assert deleted.status_code == 204
     assert deleted.content == b""
     assert service.users == {}
+    assert [event[0] for event in service.audit_events] == [
+        "user.profile.created",
+        "user.profile.updated",
+        "user.profile.deleted",
+    ]
+    assert {event[1] for event in service.audit_events} == {service.audit_events[0][1]}
     auth_service.ensure_admin_account_can_change.assert_awaited_once()
 
 
