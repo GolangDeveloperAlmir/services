@@ -110,6 +110,10 @@ flowchart LR
   Redis cleanup fails.
 - Role grants, revocations, password rotations, successful logins/logouts,
   bootstrap, and administrator-account changes write audit events.
+- Profile creation, updates, and deletion also write user.profile.created,
+  user.profile.updated, and user.profile.deleted events. The event and profile
+  mutation share one PostgreSQL transaction; an unsuccessful profile operation
+  does not leave a success-shaped audit row.
 
 Create or manage administrators interactively; never pass passwords as CLI
 arguments:
@@ -182,11 +186,14 @@ docker compose exec app python -m app.auth.cli rotate-password
 ## Audit, privacy, and recovery
 
 The audit table stores event type, actor/target IDs, timestamp, and—where
-available—the source IP. Passwords and bearer tokens are never audit fields.
-Source IPs may be personal data: configure access, backups, and retention under
-the deployment's privacy policy. This repository does not yet implement an
-automatic audit-retention job; audit records remain until an operator-approved
-retention process removes them.
+available—the source IP. It also records administrator-driven profile creation,
+updates, and deletion as user.profile.created, user.profile.updated, and
+user.profile.deleted. Each event is committed in the same PostgreSQL transaction
+as its profile mutation. Passwords, bearer tokens, and submitted profile values
+are never audit fields. Source IPs may be personal data: configure access,
+backups, and retention under the deployment's privacy policy. This repository
+does not yet implement an automatic audit-retention job; audit records remain
+until an operator-approved retention process removes them.
 
 Back up PostgreSQL and test restore procedures. Redis sessions are intentionally
 ephemeral; losing Redis invalidates sessions and resets rate-limit counters.
@@ -379,10 +386,13 @@ docker compose exec app python -m app.auth.cli rotate-password
 ## Аудит, приватность и восстановление
 
 Audit хранит тип события, actor/target ID, timestamp и, если доступен, IP.
-Пароли и bearer-токены не сохраняются в audit. IP может быть персональными
-данными: доступ, резервное копирование и retention должны соответствовать
-политике deployment. Автоматической очистки audit сейчас нет; записи остаются
-до запуска утверждённого оператором процесса retention.
+В журнал входят также создание, изменение и удаление профилей через admin API:
+user.profile.created, user.profile.updated и user.profile.deleted. Запись
+события и изменение профиля проходят в одной PostgreSQL-транзакции. Пароли,
+bearer-токены и значения полей профиля не сохраняются в audit. IP может быть
+персональными данными: доступ, резервное копирование и retention должны
+соответствовать политике deployment. Автоматической очистки audit сейчас нет;
+записи остаются до запуска утверждённого оператором процесса retention.
 
 Резервируйте PostgreSQL и проверяйте восстановление. Redis-сессии эфемерны:
 потеря Redis инвалидирует сессии и сбрасывает счётчики. При утечке credentials
