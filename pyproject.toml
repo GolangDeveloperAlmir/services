@@ -61,7 +61,7 @@ testpaths = ["tests"]
 
 [tool.deptry]
 known_first_party = ["app"]
-extend_exclude = ["tests"]
+extend_exclude = ["tests", "scripts"]
 per_rule_ignores = { DEP002 = ["email-validator", "asyncpg", "alembic", "python-dotenv", "hypercorn"] }
 
 [tool.bandit]
