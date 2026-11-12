@@ -119,6 +119,7 @@ def test_user_service_create_normalizes_email_and_commits() -> None:
     assert created.email == "person@example.com"
     assert created.full_name == "Example Person"
     assert repository.users == [created]
+    session.flush.assert_awaited_once()
     session.commit.assert_awaited_once()
     session.refresh.assert_awaited_once_with(created)
     event = session.add.call_args.args[0]
@@ -195,6 +196,7 @@ def test_user_service_rejects_duplicate_email_on_create_and_update() -> None:
             )
         )
 
+    session.add.assert_not_called()
     session.commit.assert_not_awaited()
 
 
@@ -214,6 +216,7 @@ def test_user_service_delete_removes_existing_user_and_commits() -> None:
 
     assert repository.users == []
     assert repository.deleted == [user]
+    session.flush.assert_awaited_once()
     session.commit.assert_awaited_once()
     event = session.add.call_args.args[0]
     assert event.actor_user_id == actor_id
@@ -354,6 +357,7 @@ def test_user_crud_http_endpoints(crud_client) -> None:
         "user.profile.deleted",
     ]
     assert {event[1] for event in service.audit_events} == {service.audit_events[0][1]}
+    assert all(event[2] is not None for event in service.audit_events)
     auth_service.ensure_admin_account_can_change.assert_awaited_once()
 
 
