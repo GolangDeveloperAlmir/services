@@ -21,15 +21,15 @@ REPORT_DIR = Path(os.getenv("PERF_REPORT_DIR", "reports"))
 _duplicate_email = f"load-conflict-{uuid4().hex}@example.test"
 
 
-@events.test_start.add_listener
+@events.init.add_listener
 def enforce_safe_local_profile(environment, **kwargs) -> None:
-    """Refuse to start a load test unless its target and profile are safe."""
+    """Reject unsafe load profiles during initialization, before users can spawn."""
     options = environment.parsed_options
     try:
         validate_load_profile(
             environment.host or "",
             int(getattr(options, "num_users", 0)),
-            str(getattr(options, "run_time", "")),
+            getattr(options, "run_time", None),
         )
     except ValueError as error:
         raise LocustError(str(error)) from error
@@ -66,10 +66,23 @@ def write_performance_summary(environment, **kwargs) -> None:
     print(f"\nPerformance summary: {report_path}", file=sys.stderr)
 
 
+def _unexpected_status_message(response, expected: int) -> str:
+    """Explain both unexpected HTTP responses and failures before an HTTP response."""
+    if response.status_code == 0:
+        error = getattr(response, "error", None)
+        if error is not None:
+            return (
+                f"expected HTTP {expected}, but no HTTP response was received: "
+                f"{type(error).__name__}: {error}"
+            )
+        return f"expected HTTP {expected}, but no HTTP response was received (status 0)"
+    return f"expected HTTP {expected}, got {response.status_code}"
+
+
 def _expect_status(response, expected: int) -> None:
     """Mark a Locust response successful only when its status matches."""
     if response.status_code != expected:
-        response.failure(f"expected HTTP {expected}, got {response.status_code}")
+        response.failure(_unexpected_status_message(response, expected))
     else:
         response.success()
 
@@ -97,7 +110,7 @@ class UserApiLoad(HttpUser):
             catch_response=True,
         ) as response:
             if response.status_code != 201:
-                response.failure(f"expected HTTP 201, got {response.status_code}")
+                response.failure(_unexpected_status_message(response, 201))
                 return
             user_id = response.json()["id"]
             response.success()
@@ -192,7 +205,11 @@ class UserApiLoad(HttpUser):
             catch_response=True,
         ) as response:
             if response.status_code not in {201, 409}:
-                response.failure(f"expected HTTP 201 or 409, got {response.status_code}")
+                response.failure(
+                    _unexpected_status_message(response, 201)
+                    if response.status_code != 409
+                    else _unexpected_status_message(response, 409)
+                )
             else:
                 response.success()
 
@@ -212,7 +229,7 @@ class UserApiLoad(HttpUser):
                 catch_response=True,
             ) as response:
                 if response.status_code != expected:
-                    response.failure(f"expected HTTP {expected}, got {response.status_code}")
+                    response.failure(_unexpected_status_message(response, expected))
                     continue
                 if response.status_code == 201:
                     user_id = response.json()["id"]
