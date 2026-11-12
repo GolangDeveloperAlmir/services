@@ -97,8 +97,6 @@ class UserService:
         )
 
         self.repository.add(user)
-        # Insert the profile first so the audit row's target foreign key is valid.
-        await self.session.flush()
         self._record_audit_event(
             actor_user_id=actor_user_id,
             target_user_id=user.id,
