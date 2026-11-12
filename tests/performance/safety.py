@@ -2,6 +2,7 @@
 
 import ipaddress
 import re
+from math import isfinite
 from urllib.parse import urlsplit
 
 
@@ -10,7 +11,7 @@ MAX_DURATION_SECONDS = 15 * 60
 _DURATION_PATTERN = re.compile(r"^([1-9]\d*)(s|m|h)$")
 
 
-def validate_load_profile(host: str, users: int, duration: str) -> None:
+def validate_load_profile(host: str, users: int, duration: str | int | float) -> None:
     """Reject non-loopback hosts and load profiles beyond hard safety caps."""
     parsed = urlsplit(host)
     if (
@@ -36,13 +37,25 @@ def validate_load_profile(host: str, users: int, duration: str) -> None:
     if not 1 <= users <= MAX_USERS:
         raise ValueError(f"Virtual users must be between 1 and {MAX_USERS}.")
 
-    match = _DURATION_PATTERN.fullmatch(duration)
-    if match is None:
+    if isinstance(duration, bool):
         raise ValueError("Specify a finite duration such as 30s or 5m.")
-    value = int(match.group(1))
-    unit = match.group(2)
-    duration_seconds = value * {"s": 1, "m": 60, "h": 3600}[unit]
-    if duration_seconds > MAX_DURATION_SECONDS:
+    if isinstance(duration, (int, float)):
+        duration_seconds = float(duration)
+    elif isinstance(duration, str):
+        match = _DURATION_PATTERN.fullmatch(duration)
+        if match is None:
+            raise ValueError("Specify a finite duration such as 30s or 5m.")
+        value = int(match.group(1))
+        unit = match.group(2)
+        duration_seconds = float(value * {"s": 1, "m": 60, "h": 3600}[unit])
+    else:
+        raise ValueError("Specify a finite duration such as 30s or 5m.")
+
+    if (
+        not isfinite(duration_seconds)
+        or duration_seconds < 1
+        or duration_seconds > MAX_DURATION_SECONDS
+    ):
         raise ValueError(
             f"Test duration must be between 1 second and {MAX_DURATION_SECONDS} seconds."
         )
