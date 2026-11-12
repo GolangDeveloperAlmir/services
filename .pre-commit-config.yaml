@@ -57,7 +57,7 @@ repos:
     hooks:
       - id: detect-secrets
         name: scan staged files for secrets
-        entry: uv run --no-sync detect-secrets-hook --baseline .secrets.baseline
+        entry: uv run --no-sync detect-secrets-hook --verbose --json --baseline .secrets.baseline
         language: system
         types: [text]
         exclude: ^\.secrets\.baseline$
