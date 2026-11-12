@@ -58,6 +58,24 @@ class UserService:
         if existing_user is not None and existing_user.id != exclude_user_id:
             raise EmailAlreadyExistsError
 
+    async def flush(
+        self,
+        email: str | None = None,
+        exclude_user_id: UUID | None = None,
+    ) -> None:
+        """Flush staged profile rows before dependent audit events are inserted."""
+        try:
+            await self.session.flush()
+        except IntegrityError as error:
+            await self.session.rollback()
+
+            if email is not None:
+                existing_user = await self.repository.get_by_email(email)
+                if existing_user is not None and existing_user.id != exclude_user_id:
+                    raise EmailAlreadyExistsError from error
+
+            raise
+
     async def commit(
         self,
         email: str | None = None,
@@ -97,6 +115,7 @@ class UserService:
         )
 
         self.repository.add(user)
+        await self.flush(email=email)
         self._record_audit_event(
             actor_user_id=actor_user_id,
             target_user_id=user.id,

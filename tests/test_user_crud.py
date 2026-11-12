@@ -119,6 +119,7 @@ def test_user_service_create_normalizes_email_and_commits() -> None:
     assert created.email == "person@example.com"
     assert created.full_name == "Example Person"
     assert repository.users == [created]
+    session.flush.assert_awaited_once()
     session.commit.assert_awaited_once()
     session.refresh.assert_awaited_once_with(created)
     event = session.add.call_args.args[0]
