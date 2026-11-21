@@ -10,7 +10,7 @@ COPY frontend/src ./src
 COPY frontend/tsconfig.json ./
 RUN npm run build
 
-FROM python:3.14-slim AS builder
+FROM python:3.15-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -29,7 +29,7 @@ COPY scripts ./scripts
 COPY alembic.ini ./
 RUN uv sync --locked --no-dev
 
-FROM python:3.14-slim AS runtime
+FROM python:3.15-slim AS runtime
 
 # Apply the Debian security update for zlib before creating the runtime image.
 # pip is a build/install tool; the production venv already contains all runtime
